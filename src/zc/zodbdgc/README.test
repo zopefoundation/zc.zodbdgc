@@ -1,0 +1,203 @@
+ZODB Distributed GC
+===================
+
+This package provides a script for performing distributed garbage
+collection for a collection of ZODB storages, which will typically be
+ZEO clients.
+
+Here, we'll test the underlying script.
+
+We'll need to control time.
+
+    >>> now = 1241458549.614022
+    >>> def faux_time():
+    ...     global now
+    ...     now += 1
+    ...     return now
+    >>> import time
+    >>> time_time = time.time
+    >>> time.time = faux_time
+
+Let's define some storages::
+
+    >>> open('config', 'w').write("""
+    ... <zodb db1>
+    ...     <filestorage>
+    ...         pack-gc false
+    ...         path 1.fs
+    ...     </filestorage>
+    ... </zodb>
+    ... <zodb db2>
+    ...     <filestorage>
+    ...         pack-gc false
+    ...         path 2.fs
+    ...     </filestorage>
+    ... </zodb>
+    ... <zodb db3>
+    ...     <filestorage>
+    ...         pack-gc false
+    ...         path 3.fs
+    ...     </filestorage>
+    ... </zodb>
+    ... """)
+
+    >>> import ZODB.config, transaction
+    >>> db = ZODB.config.databaseFromFile(open('config'))
+
+And perform some updates:
+
+    >>> conn1 = db.open()
+    >>> conn2 = conn1.get_connection('db2')
+    >>> conn3 = conn1.get_connection('db3')
+
+    >>> import persistent.mapping
+    >>> C = persistent.mapping.PersistentMapping
+
+    >>> conn1.root.x = C()
+    >>> conn2.root.x = C()
+    >>> conn3.root.x = C()
+    >>> transaction.commit()
+    >>> conn2.root.y = C()
+    >>> conn3.root.x = C()
+    >>> transaction.commit()
+    >>> conn3.root.z = C()
+    >>> transaction.commit()
+
+    >>> conn1.root.x.y = conn2.root.y
+    >>> del conn2.root.y
+    >>> conn1.root.x.y.z = conn3.root.z
+    >>> del conn3.root.z
+
+In db loops:
+
+    >>> conn1.root.a = C()
+    >>> transaction.commit()
+    >>> conn1.root.b = C()
+    >>> transaction.commit()
+    >>> conn1.root.a.b = conn1.root.b
+    >>> conn1.root.b.a = conn1.root.a
+
+cross db loops
+
+    >>> conn2.root.x.x = conn3.root.x
+    >>> conn3.root.x.x = conn2.root.x
+
+    >>> transaction.commit()
+
+
+No garbage yet, because everything's reachable.
+
+    >>> from ZODB.utils import u64, p64
+    >>> print u64(conn1.root.a._p_oid), u64(conn1.root.b._p_oid)
+    2 3
+    >>> print u64(conn2.root.x._p_oid), u64(conn3.root.x._p_oid)
+    1 2
+    >>> del conn1.root.a
+    >>> del conn1.root.b
+    >>> del conn2.root.x
+    >>> del conn3.root.x
+
+    >>> transaction.commit()
+
+The objects we just deleted are now garbage.
+
+Time passes. :)
+
+    >>> now += 7 * 86400        # 7 days
+
+We'll create some more garbage:
+
+    >>> conn2.root.a = C()
+    >>> transaction.commit()
+    >>> conn2.root.b = C()
+    >>> transaction.commit()
+    >>> conn2.root.a.b = conn2.root.b
+    >>> conn2.root.b.a = conn2.root.a
+
+    >>> transaction.commit()
+
+    >>> print u64(conn2.root.a._p_oid), u64(conn2.root.b._p_oid)
+    3 4
+    >>> del conn2.root.a
+    >>> del conn2.root.b
+
+More time passes.
+
+    >>> now += 1
+
+The number of objecs in the databases now:
+
+    >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
+    (4, 5, 4)
+
+    >>> for d in db.databases.values():
+    ...     d.pack()
+
+Packing doesn't change it:
+
+    >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
+    (4, 5, 4)
+
+    >>> _ = conn1._storage.load(p64(2))
+    >>> _ = conn1._storage.load(p64(3))
+    >>> _ = conn2._storage.load(p64(1))
+    >>> _ = conn3._storage.load(p64(1))
+    >>> _ = conn3._storage.load(p64(2))
+
+    >>> _ = [d.close() for d in db.databases.values()]
+
+Now let's perform gc.
+
+    >>> import zc.zodbdgc
+    >>> bad = zc.zodbdgc.gc('config', days=2)
+
+    >>> for name, oid in sorted(bad.iterator()):
+    ...     print name, u64(oid)
+    db1 2
+    db1 3
+    db2 1
+    db3 1
+    db3 2
+
+    >>> db = ZODB.config.databaseFromFile(open('config'))
+    >>> conn1 = db.open()
+    >>> conn2 = conn1.get_connection('db2')
+    >>> conn3 = conn1.get_connection('db3')
+
+Note that we still have the same number of objects, because we
+haven't packed yet.
+
+    >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
+    (4, 5, 4)
+
+    >>> now += 1
+
+    >>> for d in db.databases.values():
+    ...     d.pack()
+
+    >>> _ = [d.close() for d in db.databases.values()]
+    >>> db = ZODB.config.databaseFromFile(open('config'))
+    >>> conn1 = db.open()
+    >>> conn2 = conn1.get_connection('db2')
+    >>> conn3 = conn1.get_connection('db3')
+
+    >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
+    (2, 4, 2)
+
+    >>> import ZODB.POSException
+    >>> for name, oid in bad.iterator():
+    ...     try:
+    ...         conn1.get_connection(name)._storage.load(oid)
+    ...     except ZODB.POSException.POSKeyError:
+    ...         pass
+    ...     else:
+    ...         print 'waaa', name, u64(oid)
+
+Make sure we have no broken refs:
+
+    >>> _ = [d.close() for d in db.databases.values()]
+    >>> zc.zodbdgc.check('config')
+
+.. cleanup
+
+    >>> time.time = time_time

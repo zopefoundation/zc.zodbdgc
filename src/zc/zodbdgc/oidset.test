@@ -1,0 +1,208 @@
+The zc.zodbdgc module uses an oidset class to keep track of sets of
+name/oid pairs efficiently.
+
+    >>> import zc.zodbdgc
+    >>> oids = zc.zodbdgc.oidset(('foo', 'bar', 'baz'))
+
+    >>> from ZODB.utils import p64, u64
+
+    >>> oids.has('foo', p64(0))
+    False
+
+    >>> sorted(oids.iterator())
+    []
+
+    >>> oids.insert('foo', p64(0))
+    True
+    >>> oids.has('foo', p64(0))
+    True
+    >>> oids.has('bar', p64(0))
+    False
+    >>> oids.has('foo', p64(1))
+    False
+
+    >>> oids.has('foo', p64(1<<31))
+    False
+    >>> oids.has('foo', p64((1<<31)+1))
+    False
+    >>> oids.has('foo', p64((1<<31)-1))
+    False
+
+    >>> oids.insert('foo', p64(1<<31))
+    True
+    >>> oids.has('foo', p64(1<<31))
+    True
+    >>> oids.has('foo', p64((1<<31)+1))
+    False
+    >>> oids.has('foo', p64((1<<31)-1))
+    False
+
+    >>> oids.insert('foo', p64((1<<31)+1))
+    True
+    >>> oids.has('foo', p64(1<<31))
+    True
+    >>> oids.has('foo', p64((1<<31)+1))
+    True
+    >>> oids.has('foo', p64((1<<31)-1))
+    False
+
+    >>> oids.insert('foo', p64((1<<31)-1))
+    True
+    >>> oids.has('foo', p64(1<<31))
+    True
+    >>> oids.has('foo', p64((1<<31)+1))
+    True
+    >>> oids.has('foo', p64((1<<31)-1))
+    True
+
+    >>> oids.has('foo', p64((1<<32)))
+    False
+    >>> oids.has('foo', p64((1<<34)))
+    False
+    >>> oids.has('foo', p64((1<<35)))
+    False
+
+    >>> oids.insert('foo', p64((1<<32)))
+    True
+    >>> oids.insert('foo', p64((1<<34)))
+    True
+    >>> oids.insert('foo', p64((1<<35)))
+    True
+
+    >>> oids.has('foo', p64((1<<32)))
+    True
+    >>> oids.has('foo', p64((1<<34)))
+    True
+    >>> oids.has('foo', p64((1<<35)))
+    True
+
+    >>> oids.insert('foo', p64((1<<32)))
+    False
+    >>> oids.insert('foo', p64((1<<34)))
+    False
+    >>> oids.insert('foo', p64((1<<35)))
+    False
+    >>> oids.insert('foo', p64(1<<31))
+    False
+    >>> oids.insert('foo', p64((1<<31)+1))
+    False
+    >>> oids.insert('foo', p64((1<<31)-1))
+    False
+
+    >>> import pprint
+
+    >>> pprint.pprint(
+    ...     sorted((name, u64(oid)) for (name, oid) in oids.iterator()),
+    ...     width=1)
+    [('foo',
+      0L),
+     ('foo',
+      2147483647L),
+     ('foo',
+      2147483648L),
+     ('foo',
+      2147483649L),
+     ('foo',
+      4294967296L),
+     ('foo',
+      17179869184L),
+     ('foo',
+      34359738368L)]
+
+    >>> pprint.pprint(
+    ...     sorted(u64(oid) for oid in oids.iterator('foo')),
+    ...     width=1)
+    [0L,
+     2147483647L,
+     2147483648L,
+     2147483649L,
+     4294967296L,
+     17179869184L,
+     34359738368L]
+
+    >>> for oid in oids.iterator('foo'):
+    ...     if not oids.insert('bar', oid):
+    ...         print `oid`
+
+    >>> sorted(oids.iterator('foo')) == sorted(oids.iterator('bar'))
+    True
+
+    >>> pprint.pprint(
+    ...     sorted((name, u64(oid)) for (name, oid) in oids.iterator()),
+    ...     width=1)
+    [('bar',
+      0L),
+     ('bar',
+      2147483647L),
+     ('bar',
+      2147483648L),
+     ('bar',
+      2147483649L),
+     ('bar',
+      4294967296L),
+     ('bar',
+      17179869184L),
+     ('bar',
+      34359738368L),
+     ('foo',
+      0L),
+     ('foo',
+      2147483647L),
+     ('foo',
+      2147483648L),
+     ('foo',
+      2147483649L),
+     ('foo',
+      4294967296L),
+     ('foo',
+      17179869184L),
+     ('foo',
+      34359738368L)]
+
+    >>> oids.remove('foo', p64(1<<31))
+    >>> oids.remove('foo', p64((1<<31)+1))
+    >>> oids.remove('foo', p64((1<<31)-1))
+
+    >>> pprint.pprint(
+    ...     sorted(u64(oid) for oid in oids.iterator('foo')),
+    ...     width=1)
+    [0L,
+     4294967296L,
+     17179869184L,
+     34359738368L]
+
+    >>> import random
+    >>> r = random.Random()
+    >>> r.seed(0)
+
+    >>> generated_oids = list(oids.iterator())
+    >>> sorted(generated_oids) == sorted(oids.iterator())
+    True
+
+    >>> for i in range(1000):
+    ...     name = r.choice(('foo', 'bar'))
+    ...     oid = p64(r.randint(0, 1<<32))
+    ...     if (name, oid) in generated_oids:
+    ...         print 'dup', (name, oid)
+    ...         if oids.insert(name, oid):
+    ...            print 'wth dup', name, `oid`
+    ...     else:
+    ...         if not oids.insert(name, oid):
+    ...             print 'wth', name, `oid`
+    ...         generated_oids.append((name, oid))
+
+    >>> sorted(generated_oids) == sorted(oids.iterator())
+    True
+
+    >>> for i in range(1500):
+    ...     action = r.choice('ri')
+    ...     choice = r.choice(generated_oids)
+    ...     if action == 'i':
+    ...         if oids.insert(*choice):
+    ...             print 'wth', choice
+    ...     else:
+    ...         generated_oids.remove(choice)
+    ...         oids.remove(*choice)
+
+    >>> sorted(generated_oids) == sorted(oids.iterator())
+    True
