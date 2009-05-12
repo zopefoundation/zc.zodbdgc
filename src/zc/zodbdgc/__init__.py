@@ -18,8 +18,10 @@ import cPickle
 import cStringIO
 import logging
 import marshal
+import optparse
 import os
 import shutil
+import sys
 import tempfile
 import time
 import transaction
@@ -33,6 +35,7 @@ def gc(conf, days=1, conf2=None):
     if conf2 is None:
         db2 = db
     else:
+        logger.info("Using secondary configuration, %s, for analysis", conf2)
         db2 = ZODB.config.databaseFromFile(open(conf2))
         if set(db.databases) != set(db2.databases):
             raise ValueError("primary and secondary databases don't match.")
@@ -192,6 +195,21 @@ class oidset(dict):
                 for ioid2 in data:
                     yield p64(ioid1+ioid2)
 
+def gc_command(args=None):
+    if args is None:
+        args = sys.argv[1:]
+    parser = optparse.OptionParser("usage: %prog [options] config1 [config2]")
+    parser.add_option(
+        '-d', '--days', dest='days', type='int',
+        help='Number of trailing days to treat as non-garbage')
+
+    options, args = parser.parse_args(args)
+
+    if not args or len(args) > 2:
+        parser.parse_args(['-h'])
+
+    return gc(args[0], options.days, *args[1:])
+
 def check(config):
     db = ZODB.config.databaseFromFile(open(config))
     databases = db.databases
@@ -225,3 +243,16 @@ def check(config):
                 continue
             roots.add(ref)
             referers[ref] = name, oid
+
+    [d.close() for d in db.databases.values()]
+
+def check_command(args=None):
+    if args is None:
+        args = sys.argv[1:]
+    parser = optparse.OptionParser("usage: %prog [options] config")
+    options, args = parser.parse_args(args)
+
+    if not args or len(args) > 1:
+        parser.parse_args(['-h'])
+
+    check(args[0])

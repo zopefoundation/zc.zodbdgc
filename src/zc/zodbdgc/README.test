@@ -24,18 +24,21 @@ Let's define some storages::
     ... <zodb db1>
     ...     <filestorage>
     ...         pack-gc false
+    ...         pack-keep-old false
     ...         path 1.fs
     ...     </filestorage>
     ... </zodb>
     ... <zodb db2>
     ...     <filestorage>
     ...         pack-gc false
+    ...         pack-keep-old false
     ...         path 2.fs
     ...     </filestorage>
     ... </zodb>
     ... <zodb db3>
     ...     <filestorage>
     ...         pack-gc false
+    ...         pack-keep-old false
     ...         path 3.fs
     ...     </filestorage>
     ... </zodb>
@@ -146,6 +149,12 @@ Packing doesn't change it:
 
     >>> _ = [d.close() for d in db.databases.values()]
 
+Save databases for later:
+
+    >>> import shutil
+    >>> for n in range(1, 4):
+    ...     shutil.copyfile('%s.fs' % n, '%s.fs-2' %n)
+
 Now let's perform gc.
 
     >>> import zc.zodbdgc
@@ -175,12 +184,6 @@ haven't packed yet.
     >>> for d in db.databases.values():
     ...     d.pack()
 
-    >>> _ = [d.close() for d in db.databases.values()]
-    >>> db = ZODB.config.databaseFromFile(open('config'))
-    >>> conn1 = db.open()
-    >>> conn2 = conn1.get_connection('db2')
-    >>> conn3 = conn1.get_connection('db3')
-
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
     (2, 4, 2)
 
@@ -198,6 +201,94 @@ Make sure we have no broken refs:
     >>> _ = [d.close() for d in db.databases.values()]
     >>> zc.zodbdgc.check('config')
 
+We can use separate databases for the analysis and update.
+First restore the databases.
+
+    >>> for n in range(1, 4):
+    ...     shutil.copyfile('%s.fs-2' % n, '%s.fs' %n)
+
+Make a secondary config:
+
+    >>> open('config2', 'w').write("""
+    ... <zodb db1>
+    ...     <filestorage>
+    ...         pack-gc false
+    ...         pack-keep-old false
+    ...         path 1.fs-2
+    ...     </filestorage>
+    ... </zodb>
+    ... <zodb db2>
+    ...     <filestorage>
+    ...         pack-gc false
+    ...         pack-keep-old false
+    ...         path 2.fs-2
+    ...     </filestorage>
+    ... </zodb>
+    ... <zodb db3>
+    ...     <filestorage>
+    ...         pack-gc false
+    ...         pack-keep-old false
+    ...         path 3.fs-2
+    ...     </filestorage>
+    ... </zodb>
+    ... """)
+
+
+This time we'll use the command-line interface:
+
+    >>> import logging, sys
+    >>> handler = logging.StreamHandler(sys.stdout)
+    >>> old_level = logging.getLogger().getEffectiveLevel()
+    >>> logging.getLogger().setLevel(logging.INFO)
+    >>> logging.getLogger().addHandler(handler)
+
+    >>> old_prog = sys.argv[0]
+    >>> sys.argv[0] = 'test'
+    >>> try: zc.zodbdgc.gc_command([])
+    ... except SystemExit: pass
+    usage: test [options] config1 [config2]
+    <BLANKLINE>
+    options:
+      -h, --help            show this help message and exit
+      -d DAYS, --days=DAYS  Number of trailing days to treat as non-garbage
+
+    >>> bad2 = zc.zodbdgc.gc_command(['-d2', 'config', 'config2'])
+    Ignoring index for 1.fs
+    Ignoring index for 2.fs
+    Ignoring index for 3.fs
+    Using secondary configuration, config2, for analysis
+    Removed 2 objects from db1
+    Removed 2 objects from db3
+    Removed 1 objects from db2
+
+    >>> sorted(bad2.iterator()) == sorted(bad2.iterator())
+    True
+
+    >>> db = ZODB.config.databaseFromFile(open('config'))
+    >>> conn1 = db.open()
+    >>> conn2 = conn1.get_connection('db2')
+    >>> conn3 = conn1.get_connection('db3')
+
+    >>> for d in db.databases.values():
+    ...     d.pack()
+
+    >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
+    (2, 4, 2)
+
+    >>> _ = [d.close() for d in db.databases.values()]
+
+    >>> try: zc.zodbdgc.check_command([])
+    ... except SystemExit: pass
+    usage: test [options] config
+    <BLANKLINE>
+    options:
+      -h, --help  show this help message and exit
+
+    >>> zc.zodbdgc.check_command(['config'])
+
 .. cleanup
 
+    >>> logging.getLogger().setLevel(old_level)
+    >>> logging.getLogger().removeHandler(handler)
     >>> time.time = time_time
+    >>> sys.argv[0] = old_prog

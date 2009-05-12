@@ -18,6 +18,9 @@ import os
 from setuptools import setup, find_packages
 
 entry_points = """
+[console_scripts]
+multi-zodb-gc = zc.zodbdgc:gc_command
+multi-zodb-check-refs = zc.zodbdgc:check_command
 """
 
 def read(rname):
