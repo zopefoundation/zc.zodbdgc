@@ -59,11 +59,16 @@ And perform some updates:
     >>> conn1.root.x = C()
     >>> conn2.root.x = C()
     >>> conn3.root.x = C()
+    >>> conn1.root.i = C()
+    >>> conn1.root.j = C()
+    >>> conn1.root.lots = [C({'x': C()}) for i in range(1100)]
     >>> transaction.commit()
     >>> conn2.root.y = C()
     >>> conn3.root.x = C()
+    >>> conn1.root.j.i = conn1.root.i
     >>> transaction.commit()
     >>> conn3.root.z = C()
+    >>> del conn1.root.i
     >>> transaction.commit()
 
     >>> conn1.root.x.y = conn2.root.y
@@ -92,7 +97,7 @@ No garbage yet, because everything's reachable.
 
     >>> from ZODB.utils import u64, p64
     >>> print u64(conn1.root.a._p_oid), u64(conn1.root.b._p_oid)
-    2 3
+    2204 2205
     >>> print u64(conn2.root.x._p_oid), u64(conn3.root.x._p_oid)
     1 2
     >>> del conn1.root.a
@@ -131,7 +136,7 @@ More time passes.
 The number of objecs in the databases now:
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (4, 5, 4)
+    (2206, 5, 4)
 
     >>> for d in db.databases.values():
     ...     d.pack()
@@ -139,7 +144,7 @@ The number of objecs in the databases now:
 Packing doesn't change it:
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (4, 5, 4)
+    (2206, 5, 4)
 
     >>> _ = conn1._storage.load(p64(2))
     >>> _ = conn1._storage.load(p64(3))
@@ -162,8 +167,8 @@ Now let's perform gc.
 
     >>> for name, oid in sorted(bad.iterator()):
     ...     print name, u64(oid)
-    db1 2
-    db1 3
+    db1 2204
+    db1 2205
     db2 1
     db3 1
     db3 2
@@ -177,7 +182,7 @@ Note that we still have the same number of objects, because we
 haven't packed yet.
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (4, 5, 4)
+    (2206, 5, 4)
 
     >>> now += 1
 
@@ -185,7 +190,7 @@ haven't packed yet.
     ...     d.pack()
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (2, 4, 2)
+    (2204, 4, 2)
 
     >>> import ZODB.POSException
     >>> for name, oid in bad.iterator():
@@ -273,7 +278,7 @@ This time we'll use the command-line interface:
     ...     d.pack()
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (2, 4, 2)
+    (2204, 4, 2)
 
     >>> _ = [d.close() for d in db.databases.values()]
 

@@ -14,6 +14,7 @@
 
 from ZODB.utils import u64, z64, p64
 import BTrees.IIBTree
+import base64
 import cPickle
 import cStringIO
 import logging
@@ -83,11 +84,11 @@ def gc(conf, days=1, conf2=None):
                     if not data:
                         continue
                     refs = tuple(ref for ref in getrefs(data, name)
-                                 if (not good.has(*ref)) and not bad.has(*ref))
+                                 if not good.has(*ref))
                     if not refs:
                         continue    # leaves are common
                     f = open(os.path.join(baddir, name,
-                                          oid.encode('base64').strip()),
+                                          base64.urlsafe_b64encode(oid)),
                              'ab')
                     marshal.dump(refs, f)
                     f.close()
@@ -119,7 +120,7 @@ def gc(conf, days=1, conf2=None):
 def bad_to_good(baddir, bad, good, name, oid):
     bad.remove(name, oid)
 
-    path = os.path.join(baddir, name, oid.encode('base64').strip())
+    path = os.path.join(baddir, name, base64.urlsafe_b64encode(oid))
     if not os.path.exists(path):
         return
 
