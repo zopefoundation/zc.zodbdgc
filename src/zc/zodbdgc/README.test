@@ -128,6 +128,7 @@ We'll create some more garbage:
     3 4
     >>> del conn2.root.a
     >>> del conn2.root.b
+    >>> transaction.commit()
 
 More time passes.
 
@@ -266,8 +267,16 @@ This time we'll use the command-line interface:
     Removed 2 objects from db3
     Removed 1 objects from db2
 
-    >>> sorted(bad2.iterator()) == sorted(bad2.iterator())
+    >>> sorted(bad2.iterator()) == sorted(bad.iterator())
     True
+
+We can gc again, even with deleted records:
+
+    >>> sorted(zc.zodbdgc.gc_command(['-d2', 'config']).iterator())
+    Removed 0 objects from db1
+    Removed 0 objects from db3
+    Removed 0 objects from db2
+    []
 
     >>> db = ZODB.config.databaseFromFile(open('config'))
     >>> conn1 = db.open()
@@ -290,6 +299,31 @@ This time we'll use the command-line interface:
       -h, --help  show this help message and exit
 
     >>> zc.zodbdgc.check_command(['config'])
+
+Make sure we can not specify days on the command line:
+
+    >>> for n in range(1, 4):
+    ...     shutil.copyfile('%s.fs' % n, '%s.fs-2' %n)
+
+    >>> sorted(zc.zodbdgc.gc_command(['config', 'config2']).iterator())
+    Using secondary configuration, config2, for analysis
+    Ignoring index for 1.fs-2
+    Ignoring index for 2.fs-2
+    Ignoring index for 3.fs-2
+    Removed 0 objects from db1
+    Removed 0 objects from db3
+    Removed 0 objects from db2
+    []
+
+    >>> now += 90000
+
+    >>> sorted((name, u64(oid)) for (name, oid) in
+    ...        zc.zodbdgc.gc_command(['config', 'config2']).iterator())
+    Using secondary configuration, config2, for analysis
+    Removed 0 objects from db1
+    Removed 0 objects from db3
+    Removed 2 objects from db2
+    [('db2', 3L), ('db2', 4L)]
 
 .. cleanup
 

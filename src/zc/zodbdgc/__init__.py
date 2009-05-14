@@ -32,13 +32,13 @@ import ZODB.TimeStamp
 logger = logging.getLogger(__name__)
 
 def gc(conf, days=1, conf2=None):
-    db = ZODB.config.databaseFromFile(open(conf))
+    db1 = ZODB.config.databaseFromFile(open(conf))
     if conf2 is None:
-        db2 = db
+        db2 = db1
     else:
         logger.info("Using secondary configuration, %s, for analysis", conf2)
         db2 = ZODB.config.databaseFromFile(open(conf2))
-        if set(db.databases) != set(db2.databases):
+        if set(db1.databases) != set(db2.databases):
             raise ValueError("primary and secondary databases don't match.")
 
     databases = db2.databases
@@ -51,6 +51,8 @@ def gc(conf, days=1, conf2=None):
     # Pre-populate good with roots and recently-written objects
     good = oidset(databases)
     bad = oidset(databases)
+    both = good, bad
+    deleted = oidset(databases)
     baddir = tempfile.mkdtemp()
     for name in storages:
         os.mkdir(os.path.join(baddir, name))
@@ -60,41 +62,70 @@ def gc(conf, days=1, conf2=None):
         _ = storage.load(z64, '')
         good.insert(name, z64)
 
-        # All new records are good
+        # All non-deleted new records are good
         for trans in storage.iterator(ptid):
             for record in trans:
-                good.insert(name, record.oid)
-                # and anything they reference
-                for ref in getrefs(record.data, name):
-                    good.insert(*ref)
+                oid = record.oid
+                data = record.data
+                if data:
+                    if deleted.has(name, oid):
+                        raise AssertionError(
+                            "Non-deleted record after deleted")
+                    good.insert(name, oid)
+
+                    # and anything they reference
+                    for ref in getrefs(data, name):
+                        if not deleted.has(*ref):
+                            good.insert(*ref)
+                else:
+                    # deleted record
+                    deleted.insert(name, oid)
+                    if good.has(name, oid):
+                        good.remove(name, oid)
 
         # Now iterate over older records
         for trans in storage.iterator(None, ptid):
             for record in trans:
                 oid = record.oid
                 data = record.data
-                if good.has(name, oid):
-                    if not data:
+                if data:
+                    if deleted.has(name, oid):
                         continue
-                    for ref in getrefs(data, name):
-                        if good.insert(*ref) and bad.has(*ref):
-                            bad_to_good(baddir, bad, good, *ref)
+                    if good.has(name, oid):
+                        for ref in getrefs(data, name):
+                            if deleted.has(*ref):
+                                continue
+                            if good.insert(*ref) and bad.has(*ref):
+                                bad_to_good(baddir, bad, good, *ref)
+                    else:
+                        bad.insert(name, oid)
+                        refs = tuple(ref for ref in getrefs(data, name)
+                                     if not (good.has(*ref) or
+                                             deleted.has(*ref)
+                                             )
+                                     )
+                        if not refs:
+                            continue    # leaves are common
+                        f = open(bad_path(baddir, name, oid), 'ab')
+                        marshal.dump(refs, f)
+                        f.close()
                 else:
-                    bad.insert(name, oid)
-                    if not data:
-                        continue
-                    refs = tuple(ref for ref in getrefs(data, name)
-                                 if not good.has(*ref))
-                    if not refs:
-                        continue    # leaves are common
-                    f = open(os.path.join(baddir, name,
-                                          base64.urlsafe_b64encode(oid)),
-                             'ab')
-                    marshal.dump(refs, f)
-                    f.close()
+                    # deleted record
+                    if good.has(name, oid):
+                        good.remove(name, oid)
+                    elif bad.has(name, oid):
+                        bad.remove(name, oid)
+                        path = bad_path(baddir, name, oid)
+                        if os.path.exists(path):
+                            os.remove(path)
+                    deleted.insert(name, oid)
+
+    if conf2 is not None:
+        for db in db2.databases.itervalues():
+            db.close()
 
     # Now, we have the garbage in bad.  Remove it.
-    for name, db in db.databases.iteritems():
+    for name, db in db1.databases.iteritems():
         storage = db.storage
         t = transaction.begin()
         storage.tpc_begin(t)
@@ -107,20 +138,23 @@ def gc(conf, days=1, conf2=None):
         if nd:
             storage.tpc_vote(t)
             storage.tpc_finish(t)
-            transaction.commit()
+            t.commit()
         else:
             storage.tpc_abort(t)
-            transaction.abort()
+            t.abort()
         db.close()
 
     shutil.rmtree(baddir)
 
     return bad
 
+def bad_path(baddir, name, oid):
+    return os.path.join(baddir, name, base64.urlsafe_b64encode(oid))
+
 def bad_to_good(baddir, bad, good, name, oid):
     bad.remove(name, oid)
 
-    path = os.path.join(baddir, name, base64.urlsafe_b64encode(oid))
+    path = bad_path(baddir, name, oid)
     if not os.path.exists(path):
         return
 
@@ -201,7 +235,7 @@ def gc_command(args=None):
         args = sys.argv[1:]
     parser = optparse.OptionParser("usage: %prog [options] config1 [config2]")
     parser.add_option(
-        '-d', '--days', dest='days', type='int',
+        '-d', '--days', dest='days', type='int', default=1,
         help='Number of trailing days to treat as non-garbage')
 
     options, args = parser.parse_args(args)
