@@ -152,25 +152,29 @@ def bad_path(baddir, name, oid):
     return os.path.join(baddir, name, base64.urlsafe_b64encode(oid))
 
 def bad_to_good(baddir, bad, good, name, oid):
-    bad.remove(name, oid)
 
-    path = bad_path(baddir, name, oid)
-    if not os.path.exists(path):
-        return
+    to_do = [(name, oid)]
+    while to_do:
+        name, oid = to_do.pop()
+        bad.remove(name, oid)
 
-    f = open(path , 'rb')
-    while 1:
-        try:
-            refs = marshal.load(f)
-        except EOFError:
-            break
+        path = bad_path(baddir, name, oid)
+        if not os.path.exists(path):
+            return
 
-        for ref in refs:
-            if good.insert(*ref) and bad.has(*ref):
-                bad_to_good(baddir, bad, good, *ref)
+        f = open(path , 'rb')
+        while 1:
+            try:
+                refs = marshal.load(f)
+            except EOFError:
+                break
 
-    f.close()
-    os.remove(path)
+            for ref in refs:
+                if good.insert(*ref) and bad.has(*ref):
+                    to_do.append(ref)
+
+        f.close()
+        os.remove(path)
 
 def getrefs(p, rname):
     refs = []
