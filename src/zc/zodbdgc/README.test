@@ -257,6 +257,8 @@ This time we'll use the command-line interface:
     options:
       -h, --help            show this help message and exit
       -d DAYS, --days=DAYS  Number of trailing days to treat as non-garbage
+      -l LEVEL, --log-level=LEVEL
+                            The logging level. The default is WARNING.
 
     >>> bad2 = zc.zodbdgc.gc_command(['-d2', 'config', 'config2'])
     Ignoring index for 1.fs

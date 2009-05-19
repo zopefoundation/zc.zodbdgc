@@ -237,15 +237,28 @@ class oidset(dict):
 def gc_command(args=None):
     if args is None:
         args = sys.argv[1:]
+        level = logging.WARNING
+    else:
+        level = None
+
     parser = optparse.OptionParser("usage: %prog [options] config1 [config2]")
     parser.add_option(
         '-d', '--days', dest='days', type='int', default=1,
         help='Number of trailing days to treat as non-garbage')
+    parser.add_option(
+        '-l', '--log-level', dest='level',
+        help='The logging level. The default is WARNING.')
 
     options, args = parser.parse_args(args)
 
     if not args or len(args) > 2:
         parser.parse_args(['-h'])
+
+    if options.level:
+        level = options.level
+
+    if level:
+        logging.basicConfig(level=getattr(logging, level))
 
     return gc(args[0], options.days, *args[1:])
 
@@ -288,7 +301,10 @@ def check(config):
 def check_command(args=None):
     if args is None:
         args = sys.argv[1:]
+        logging.basicConfig(level=logging.WARNING)
+
     parser = optparse.OptionParser("usage: %prog [options] config")
+
     options, args = parser.parse_args(args)
 
     if not args or len(args) > 1:
