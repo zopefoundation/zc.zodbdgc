@@ -26,6 +26,7 @@ Let's define some storages::
     ...         pack-gc false
     ...         pack-keep-old false
     ...         path 1.fs
+    ...         blob-dir 1.blobs
     ...     </filestorage>
     ... </zodb>
     ... <zodb db2>
@@ -44,7 +45,7 @@ Let's define some storages::
     ... </zodb>
     ... """)
 
-    >>> import ZODB.config, transaction
+    >>> import ZODB.blob, ZODB.config, transaction
     >>> db = ZODB.config.databaseFromFile(open('config'))
 
 And perform some updates:
@@ -72,9 +73,9 @@ And perform some updates:
     >>> transaction.commit()
 
     >>> conn1.root.x.y = conn2.root.y
-    >>> del conn2.root.y
+    >>> del conn2.root.y # conn2.root.y is now only referenced from db 1
     >>> conn1.root.x.y.z = conn3.root.z
-    >>> del conn3.root.z
+    >>> del conn3.root.z # conn3.root.z is now only referenced from db 2
 
 In db loops:
 
@@ -130,6 +131,19 @@ We'll create some more garbage:
     >>> del conn2.root.b
     >>> transaction.commit()
 
+Let's add a blob.  We'll use it later:
+
+    >>> conn1.root.blob = ZODB.blob.Blob('some data')
+    >>> transaction.commit()
+    >>> blob_path = conn1.root.blob.committed()
+
+
+Save databases for later:
+
+    >>> import shutil
+    >>> for n in range(1, 4):
+    ...     shutil.copyfile('%s.fs' % n, '%s.fs-save' %n)
+
 More time passes.
 
     >>> now += 1
@@ -137,7 +151,7 @@ More time passes.
 The number of objecs in the databases now:
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (2206, 5, 4)
+    (2207, 5, 4)
 
     >>> for d in db.databases.values():
     ...     d.pack()
@@ -145,7 +159,7 @@ The number of objecs in the databases now:
 Packing doesn't change it:
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (2206, 5, 4)
+    (2207, 5, 4)
 
     >>> _ = conn1._storage.load(p64(2))
     >>> _ = conn1._storage.load(p64(3))
@@ -160,11 +174,13 @@ Save databases for later:
     >>> import shutil
     >>> for n in range(1, 4):
     ...     shutil.copyfile('%s.fs' % n, '%s.fs-2' %n)
+    >>> shutil.copytree('1.blobs', '1.blobs-2')
+    >>> shutil.copymode('1.blobs', '1.blobs-2')
 
 Now let's perform gc.
 
     >>> import zc.zodbdgc
-    >>> bad = zc.zodbdgc.gc('config', days=2)
+    >>> bad = zc.zodbdgc.gc('config', days=2, batch_size=2)
 
     >>> for name, oid in sorted(bad.iterator()):
     ...     print name, u64(oid)
@@ -183,7 +199,7 @@ Note that we still have the same number of objects, because we
 haven't packed yet.
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (2206, 5, 4)
+    (2207, 5, 4)
 
     >>> now += 1
 
@@ -191,7 +207,7 @@ haven't packed yet.
     ...     d.pack()
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (2204, 4, 2)
+    (2205, 4, 2)
 
     >>> import ZODB.POSException
     >>> for name, oid in bad.iterator():
@@ -218,22 +234,17 @@ Make a secondary config:
     >>> open('config2', 'w').write("""
     ... <zodb db1>
     ...     <filestorage>
-    ...         pack-gc false
-    ...         pack-keep-old false
     ...         path 1.fs-2
+    ...         blob-dir 1.blobs-2
     ...     </filestorage>
     ... </zodb>
     ... <zodb db2>
     ...     <filestorage>
-    ...         pack-gc false
-    ...         pack-keep-old false
     ...         path 2.fs-2
     ...     </filestorage>
     ... </zodb>
     ... <zodb db3>
     ...     <filestorage>
-    ...         pack-gc false
-    ...         pack-keep-old false
     ...         path 3.fs-2
     ...     </filestorage>
     ... </zodb>
@@ -289,7 +300,7 @@ We can gc again, even with deleted records:
     ...     d.pack()
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (2204, 4, 2)
+    (2205, 4, 2)
 
     >>> _ = [d.close() for d in db.databases.values()]
 
@@ -302,7 +313,7 @@ We can gc again, even with deleted records:
 
     >>> zc.zodbdgc.check_command(['config'])
 
-Make sure we can not specify days on the command line:
+Make sure we can omit days on the command line:
 
     >>> for n in range(1, 4):
     ...     shutil.copyfile('%s.fs' % n, '%s.fs-2' %n)
@@ -326,6 +337,43 @@ Make sure we can not specify days on the command line:
     Removed 0 objects from db3
     Removed 2 objects from db2
     [('db2', 3L), ('db2', 4L)]
+
+
+Test the check command
+----------------------
+
+    If we pack the original files with gc enabled, we'll create
+    a missing link.  We'll also remove the blob file, to make sure we
+    catch that too.
+
+    >>> import os
+    >>> os.remove(blob_path.replace('1.blobs', '1.blobs-2'))
+
+    >>> for n in range(1, 4):
+    ...     shutil.copyfile('%s.fs-save' % n, '%s.fs-2' %n)
+    >>> db = ZODB.config.databaseFromFile(open('config2'))
+    Ignoring index for 1.fs-2
+    Ignoring index for 2.fs-2
+    Ignoring index for 3.fs-2
+
+    >>> for d in db.databases.values():
+    ...     d.pack()
+    >>> for d in db.databases.values():
+    ...     d.close()
+
+    >>> zc.zodbdgc.check_command(['config2'])
+    !!! db1 2206 db1 0
+    POSKeyError: 'No blob file'
+    !!! db2 2 db1 2
+    POSKeyError: 0x02
+
+Note that we see the missing link from db1 to db2.  There is not
+missing link from db1 to db3 because the referencing object was
+incorrectly removed as garbage.
+
+The check function also catches missing blob files:
+
+
 
 .. cleanup
 

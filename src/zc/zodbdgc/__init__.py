@@ -26,6 +26,7 @@ import sys
 import tempfile
 import time
 import transaction
+import ZODB.blob
 import ZODB.config
 import ZODB.TimeStamp
 
@@ -282,6 +283,8 @@ def check(config):
 
         try:
             p, tid = storages[name].load(oid, '')
+            if ZODB.blob.is_blob_record(p):
+                storages[name].loadBlob(oid, tid)
         except:
             print '!!!', name, u64(oid),
             referer = referers.pop((name, oid), None)
@@ -290,6 +293,8 @@ def check(config):
                 print rname, u64(roid)
             else:
                 print '?'
+            t, v = sys.exc_info()[:2]
+            print "%s: %s" % (t.__name__, v)
             continue
 
         referers.pop((name, oid), None)
