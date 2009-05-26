@@ -371,10 +371,6 @@ Note that we see the missing link from db1 to db2.  There is not
 missing link from db1 to db3 because the referencing object was
 incorrectly removed as garbage.
 
-The check function also catches missing blob files:
-
-
-
 .. cleanup
 
     >>> logging.getLogger().setLevel(old_level)
