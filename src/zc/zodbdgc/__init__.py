@@ -31,7 +31,7 @@ import ZODB.TimeStamp
 
 logger = logging.getLogger(__name__)
 
-def gc(conf, days=1, conf2=None):
+def gc(conf, days=1, conf2=None, batch_size=10000):
     db1 = ZODB.config.databaseFromFile(open(conf))
     if conf2 is None:
         db2 = db1
@@ -134,6 +134,12 @@ def gc(conf, days=1, conf2=None):
             p, s = storage.load(oid, '')
             storage.deleteObject(oid, s, t)
             nd += 1
+            if (nd % batch_size) == 0:
+                storage.tpc_vote(t)
+                storage.tpc_finish(t)
+                t.commit()
+                t = transaction.begin()
+
         logger.info("Removed %s objects from %s", nd, name)
         if nd:
             storage.tpc_vote(t)
