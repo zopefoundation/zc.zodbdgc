@@ -60,8 +60,11 @@ And perform some updates:
     >>> conn1.root.x = C()
     >>> conn2.root.x = C()
     >>> conn3.root.x = C()
+    >>> transaction.commit()
     >>> conn1.root.i = C()
+    >>> transaction.commit()
     >>> conn1.root.j = C()
+    >>> transaction.commit()
     >>> conn1.root.lots = [C({'x': C()}) for i in range(1100)]
     >>> transaction.commit()
     >>> conn2.root.y = C()
@@ -364,7 +367,7 @@ Test the check command
     >>> zc.zodbdgc.check_command(['config2'])
     !!! db1 2206 db1 0
     POSKeyError: 'No blob file'
-    !!! db2 2 db1 2
+    !!! db2 2 db1 1
     POSKeyError: 0x02
 
 Note that we see the missing link from db1 to db2.  There is not
@@ -386,8 +389,40 @@ If we see references to databases we haven't heard of, we just report them:
     >>> zc.zodbdgc.check_command(['config2'])
     !!! db1 2206 db1 0
     POSKeyError: 'No blob file'
-    !!! db2 2 db1 2
+    !!! db2 2 db1 1
     KeyError: 'db2'
+
+If a database is configured to not allow cross references, we complain
+about cross references that we see:
+
+    >>> open('config2', 'w').write("""
+    ... <zodb db1>
+    ...     allow-implicit-cross-references false
+    ...     <filestorage>
+    ...         path 1.fs-2
+    ...         blob-dir 1.blobs-2
+    ...     </filestorage>
+    ... </zodb>
+    ... <zodb db2>
+    ...     allow-implicit-cross-references false
+    ...     <filestorage>
+    ...         path 2.fs-2
+    ...     </filestorage>
+    ... </zodb>
+    ... <zodb db3>
+    ...     allow-implicit-cross-references false
+    ...     <filestorage>
+    ...         path 3.fs-2
+    ...     </filestorage>
+    ... </zodb>
+    ... """)
+
+    >>> zc.zodbdgc.check_command(['config2'])
+    !!! db1 2206 db1 0
+    POSKeyError: 'No blob file'
+    bad xref db2 2 db1 1
+    !!! db2 2 db1 1
+    POSKeyError: 0x02
 
 .. cleanup
 

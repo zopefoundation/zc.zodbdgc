@@ -303,6 +303,8 @@ def check(config):
         referers.pop((name, oid), None)
 
         for ref in getrefs(p, name):
+            if (ref[0] != name) and not databases[name].xrefs:
+                print 'bad xref', ref[0], u64(ref[1]), name, u64(oid)
             if seen.has(*ref):
                 continue
             if ref in roots:
