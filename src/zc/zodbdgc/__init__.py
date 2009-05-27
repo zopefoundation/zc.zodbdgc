@@ -227,7 +227,10 @@ class oidset(dict):
 
     def has(self, name, oid):
         ioid1, ioid2 = divmod(u64(oid), 2147483648L)
-        data = self[name].get(ioid1)
+        try:
+            data = self[name].get(ioid1)
+        except KeyError:
+            return False
         return bool(data and (int(ioid2) in data))
 
     def iterator(self, name=None):
@@ -278,10 +281,10 @@ def check(config):
     seen = oidset(databases)
     while roots:
         name, oid = roots.pop()
-        if not seen.insert(name, oid):
-            continue
 
         try:
+            if not seen.insert(name, oid):
+                continue
             p, tid = storages[name].load(oid, '')
             if ZODB.blob.is_blob_record(p):
                 storages[name].loadBlob(oid, tid)

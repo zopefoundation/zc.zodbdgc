@@ -371,6 +371,24 @@ Note that we see the missing link from db1 to db2.  There is not
 missing link from db1 to db3 because the referencing object was
 incorrectly removed as garbage.
 
+
+If we see references to databases we haven't heard of, we just report them:
+
+    >>> open('config2', 'w').write("""
+    ... <zodb db1>
+    ...     <filestorage>
+    ...         path 1.fs-2
+    ...         blob-dir 1.blobs-2
+    ...     </filestorage>
+    ... </zodb>
+    ... """)
+
+    >>> zc.zodbdgc.check_command(['config2'])
+    !!! db1 2206 db1 0
+    POSKeyError: 'No blob file'
+    !!! db2 2 db1 2
+    KeyError: 'db2'
+
 .. cleanup
 
     >>> logging.getLogger().setLevel(old_level)
