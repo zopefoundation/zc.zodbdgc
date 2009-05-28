@@ -111,6 +111,15 @@ No garbage yet, because everything's reachable.
 
     >>> transaction.commit()
 
+Must have more garbage!
+
+    >>> for i in range(10):
+    ...     conn1.root()[i] = C()
+    >>> transaction.commit()
+    >>> for i in range(10):
+    ...     del conn1.root()[i]
+    >>> transaction.commit()
+
 The objects we just deleted are now garbage.
 
 Time passes. :)
@@ -154,7 +163,7 @@ More time passes.
 The number of objecs in the databases now:
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (2207, 5, 4)
+    (2217, 5, 4)
 
     >>> for d in db.databases.values():
     ...     d.pack()
@@ -162,7 +171,7 @@ The number of objecs in the databases now:
 Packing doesn't change it:
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (2207, 5, 4)
+    (2217, 5, 4)
 
     >>> _ = conn1._storage.load(p64(2))
     >>> _ = conn1._storage.load(p64(3))
@@ -189,6 +198,16 @@ Now let's perform gc.
     ...     print name, u64(oid)
     db1 2204
     db1 2205
+    db1 2206
+    db1 2207
+    db1 2208
+    db1 2209
+    db1 2210
+    db1 2211
+    db1 2212
+    db1 2213
+    db1 2214
+    db1 2215
     db2 1
     db3 1
     db3 2
@@ -202,7 +221,7 @@ Note that we still have the same number of objects, because we
 haven't packed yet.
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (2207, 5, 4)
+    (2217, 5, 4)
 
     >>> now += 1
 
@@ -279,7 +298,7 @@ This time we'll use the command-line interface:
     Ignoring index for 2.fs
     Ignoring index for 3.fs
     Using secondary configuration, config2, for analysis
-    Removed 2 objects from db1
+    Removed 12 objects from db1
     Removed 2 objects from db3
     Removed 1 objects from db2
 
@@ -365,7 +384,7 @@ Test the check command
     ...     d.close()
 
     >>> zc.zodbdgc.check_command(['config2'])
-    !!! db1 2206 db1 0
+    !!! db1 2216 db1 0
     POSKeyError: 'No blob file'
     !!! db2 2 db1 1
     POSKeyError: 0x02
@@ -387,7 +406,7 @@ If we see references to databases we haven't heard of, we just report them:
     ... """)
 
     >>> zc.zodbdgc.check_command(['config2'])
-    !!! db1 2206 db1 0
+    !!! db1 2216 db1 0
     POSKeyError: 'No blob file'
     !!! db2 2 db1 1
     KeyError: 'db2'
@@ -418,7 +437,7 @@ about cross references that we see:
     ... """)
 
     >>> zc.zodbdgc.check_command(['config2'])
-    !!! db1 2206 db1 0
+    !!! db1 2216 db1 0
     POSKeyError: 'No blob file'
     bad xref db2 2 db1 1
     !!! db2 2 db1 1

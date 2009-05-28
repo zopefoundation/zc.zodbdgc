@@ -140,6 +140,7 @@ def gc(conf, days=1, conf2=None, batch_size=10000):
                 storage.tpc_finish(t)
                 t.commit()
                 t = transaction.begin()
+                storage.tpc_begin(t)
 
         logger.info("Removed %s objects from %s", nd, name)
         if nd:
