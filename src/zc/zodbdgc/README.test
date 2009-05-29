@@ -326,12 +326,14 @@ We can gc again, even with deleted records:
 
     >>> _ = [d.close() for d in db.databases.values()]
 
-    >>> try: zc.zodbdgc.check_command([])
-    ... except SystemExit: pass
-    usage: test [options] config
-    <BLANKLINE>
-    options:
-      -h, --help  show this help message and exit
+>>> try: zc.zodbdgc.check_command([])
+... except SystemExit: pass
+usage: test [options] config
+<BLANKLINE>
+options:
+  -h, --help            show this help message and exit
+  -r REFDB, --references-filestorage=REFDB
+                        The name of a file-storage to save reference info in.
 
     >>> zc.zodbdgc.check_command(['config'])
 
@@ -409,7 +411,7 @@ If we see references to databases we haven't heard of, we just report them:
     !!! db1 2216 db1 0
     POSKeyError: 'No blob file'
     !!! db2 2 db1 1
-    KeyError: 'db2'
+    bad db
 
 If a database is configured to not allow cross references, we complain
 about cross references that we see:
