@@ -287,7 +287,12 @@ def check(config):
             if not seen.insert(name, oid):
                 continue
             p, tid = storages[name].load(oid, '')
-            if ZODB.blob.is_blob_record(p):
+            if (
+                # XXX should be in is_blob_record
+                len(p) < 100 and ('ZODB.blob' in p)
+
+                and ZODB.blob.is_blob_record(p)
+                ):
                 storages[name].loadBlob(oid, tid)
         except:
             print '!!!', name, u64(oid),
