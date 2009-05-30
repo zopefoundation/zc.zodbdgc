@@ -12,9 +12,10 @@
 #
 ##############################################################################
 
-from ZODB.utils import u64, z64, p64
-import BTrees.IIBTree
+from ZODB.utils import z64
+import BTrees.fsBTree
 import BTrees.OOBTree
+import BTrees.LLBTree
 import base64
 import cPickle
 import cStringIO
@@ -23,6 +24,7 @@ import marshal
 import optparse
 import os
 import shutil
+import struct
 import sys
 import tempfile
 import time
@@ -31,6 +33,14 @@ import ZODB.blob
 import ZODB.config
 import ZODB.FileStorage
 import ZODB.TimeStamp
+
+def p64(v):
+    """Pack an integer or long into a 8-byte string"""
+    return struct.pack(">q", v)
+
+def u64(v):
+    """Unpack an 8-byte string into a 64-bit signed long integer."""
+    return struct.unpack(">q", v)[0]
 
 logger = logging.getLogger(__name__)
 
@@ -209,24 +219,24 @@ class oidset(dict):
             self[name] = {}
 
     def insert(self, name, oid):
-        ioid1, ioid2 = divmod(u64(oid), 2147483648L)
-        ioid2 = int(ioid2)
-        data = self[name].get(ioid1)
+        prefix = oid[:6]
+        suffix = oid[6:]
+        data = self[name].get(prefix)
         if data is None:
-            data = self[name][ioid1] = BTrees.IIBTree.TreeSet()
-        elif ioid2 in data:
+            data = self[name][prefix] = BTrees.fsBTree.TreeSet()
+        elif suffix in data:
             return False
-        data.insert(ioid2)
+        data.insert(suffix)
         return True
 
     def remove(self, name, oid):
-        ioid1, ioid2 = divmod(u64(oid), 2147483648L)
-        ioid2 = int(ioid2)
-        data = self[name].get(ioid1)
-        if data and ioid2 in data:
-            data.remove(ioid2)
+        prefix = oid[:6]
+        suffix = oid[6:]
+        data = self[name].get(prefix)
+        if data and suffix in data:
+            data.remove(suffix)
             if not data:
-                del self[name][ioid1]
+                del self[name][prefix]
 
     def __nonzero__(self):
         for v in self.itervalues():
@@ -238,20 +248,19 @@ class oidset(dict):
         for name, data in self.iteritems():
             if data:
                break
-        ioid1, s = data.iteritems().next()
-        ioid2 = s.maxKey()
-        s.remove(ioid2)
+        prefix, s = data.iteritems().next()
+        suffix = s.maxKey()
+        s.remove(suffix)
         if not s:
-            del data[ioid1]
-        return name, p64(ioid1*2147483648L+ioid2)
+            del data[prefix]
+        return name, prefix+suffix
 
     def has(self, name, oid):
-        ioid1, ioid2 = divmod(u64(oid), 2147483648L)
         try:
-            data = self[name].get(ioid1)
+            data = self[name][oid[:6]]
         except KeyError:
             return False
-        return bool(data and (int(ioid2) in data))
+        return oid[6:] in data
 
     def iterator(self, name=None):
         if name is None:
@@ -259,10 +268,9 @@ class oidset(dict):
                 for oid in self.iterator(name):
                     yield name, oid
         else:
-            for ioid1, data in self[name].iteritems():
-                ioid1 *= 2147483648L
-                for ioid2 in data:
-                    yield p64(ioid1+ioid2)
+            for prefix, data in self[name].iteritems():
+                for suffix in data:
+                    yield prefix+suffix
 
 def gc_command(args=None):
     if args is None:
@@ -311,12 +319,14 @@ def check(config, refdb=None):
             shutil.rmtree(tempdir)
 
 def _insert_ref(references, rname, roid, name, oid):
+    oid = u64(oid)
+    roid = u64(roid)
     by_oid = references.get(name)
     if not by_oid:
-        by_oid = references[name] = BTrees.OOBTree.BTree()
+        by_oid = references[name] = BTrees.LOBTree.BTree()
     by_rname = by_oid.get(oid)
     if not by_rname:
-        references = BTrees.OOBTree.TreeSet()
+        references = BTrees.LLBTree.TreeSet()
         if rname == name:
             by_oid[oid] = references
         else:
@@ -324,9 +334,11 @@ def _insert_ref(references, rname, roid, name, oid):
     elif isinstance(by_rname, dict):
         references = by_rname.get(rname)
         if not references:
-            references = by_rname[rname] = BTrees.OOBTree.TreeSet()
+            references = by_rname[rname] = BTrees.LLBTree.TreeSet()
+            # trigger change since dict is not persistent:
+            by_oid[oid] = by_rname
     elif rname != name:
-        references = BTrees.OOBTree.TreeSet()
+        references = BTrees.LLBTree.TreeSet()
         by_oid[oid] = {name: by_rname, rname: references}
     else:
         references = by_rname
@@ -335,13 +347,14 @@ def _insert_ref(references, rname, roid, name, oid):
 def _get_referer(references, name, oid):
     by_oid = references.get(name)
     if by_oid:
+        oid = u64(oid)
         by_rname = by_oid.get(oid)
         if by_rname:
             if isinstance(by_rname, dict):
                 rname = iter(by_rname).next()
-                return rname, iter(by_rname[rname]).next()
+                return rname, p64(iter(by_rname[rname]).next())
             else:
-                return name, iter(by_rname).next()
+                return name, p64(iter(by_rname).next())
 
 def check_(config, references):
     db = ZODB.config.databaseFromFile(open(config))
