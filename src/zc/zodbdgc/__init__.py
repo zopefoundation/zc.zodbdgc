@@ -66,14 +66,13 @@ def gc(conf, days=1, conf2=None, batch_size=10000):
     bad = oidset(databases)
     both = good, bad
     deleted = oidset(databases)
-    baddir = tempfile.mkdtemp()
-    for name in storages:
-        os.mkdir(os.path.join(baddir, name))
 
     for name, storage in storages.iteritems():
         # Make sure we can get the roots
-        _ = storage.load(z64, '')
+        data, s = storage.load(z64, '')
         good.insert(name, z64)
+        for ref in getrefs(data, name):
+            good.insert(*ref)
 
         # All non-deleted new records are good
         for trans in storage.iterator(ptid):
@@ -109,28 +108,15 @@ def gc(conf, days=1, conf2=None, batch_size=10000):
                             if deleted.has(*ref):
                                 continue
                             if good.insert(*ref) and bad.has(*ref):
-                                bad_to_good(baddir, bad, good, *ref)
+                                bad_to_good(storages, bad, good, *ref)
                     else:
                         bad.insert(name, oid)
-                        refs = tuple(ref for ref in getrefs(data, name)
-                                     if not (good.has(*ref) or
-                                             deleted.has(*ref)
-                                             )
-                                     )
-                        if not refs:
-                            continue    # leaves are common
-                        f = open(bad_path(baddir, name, oid), 'ab')
-                        marshal.dump(refs, f)
-                        f.close()
                 else:
                     # deleted record
                     if good.has(name, oid):
                         good.remove(name, oid)
                     elif bad.has(name, oid):
                         bad.remove(name, oid)
-                        path = bad_path(baddir, name, oid)
-                        if os.path.exists(path):
-                            os.remove(path)
                     deleted.insert(name, oid)
 
     if conf2 is not None:
@@ -164,37 +150,24 @@ def gc(conf, days=1, conf2=None, batch_size=10000):
             t.abort()
         db.close()
 
-    shutil.rmtree(baddir)
-
     return bad
 
 def bad_path(baddir, name, oid):
     return os.path.join(baddir, name, base64.urlsafe_b64encode(oid))
 
-def bad_to_good(baddir, bad, good, name, oid):
+def bad_to_good(storages, bad, good, name, oid):
 
     to_do = [(name, oid)]
     while to_do:
         name, oid = to_do.pop()
         bad.remove(name, oid)
+        storage = storages[name]
 
-        path = bad_path(baddir, name, oid)
-        if not os.path.exists(path):
-            return
-
-        f = open(path , 'rb')
-        while 1:
-            try:
-                refs = marshal.load(f)
-            except EOFError:
-                break
-
-            for ref in refs:
+        for h in storage.history(oid, size=1<<99):
+            data = storage.loadSerial(oid, h['tid'])
+            for ref in getrefs(data, name):
                 if good.insert(*ref) and bad.has(*ref):
                     to_do.append(ref)
-
-        f.close()
-        os.remove(path)
 
 def getrefs(p, rname):
     refs = []
@@ -342,7 +315,11 @@ def _insert_ref(references, rname, roid, name, oid):
         by_oid[oid] = {name: by_rname, rname: references}
     else:
         references = by_rname
-    references.insert(roid)
+
+    if roid not in references:
+        references.insert(roid)
+        return True
+    return False
 
 def _get_referer(references, name, oid):
     by_oid = references.get(name)
@@ -398,8 +375,7 @@ def check_(config, references):
             if (ref[0] != name) and not databases[name].xrefs:
                 print 'bad xref', ref[0], u64(ref[1]), name, u64(oid)
 
-            _insert_ref(references, name, oid, *ref)
-            nreferences += 1
+            nreferences += _insert_ref(references, name, oid, *ref)
 
             if nreferences > 10000:
                 transaction.commit()
