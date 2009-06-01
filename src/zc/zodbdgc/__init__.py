@@ -387,8 +387,6 @@ def check_(config, references):
                 continue
             if seen.has(*ref):
                 continue
-            if roots.has(*ref):
-                continue
             roots.insert(*ref)
 
     [d.close() for d in db.databases.values()]
