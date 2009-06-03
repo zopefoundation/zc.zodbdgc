@@ -276,10 +276,9 @@ def gc_command(args=None):
 
 
 def check(config, refdb=None):
-    tempdir = None
     if refdb is None:
-        tempdir = tempfile.mkdtemp('check_refs')
-        refdb = os.path.join(tempdir, 'refs.fs')
+        return check_(config)
+
     fs = ZODB.FileStorage.FileStorage(refdb, create=True)
     conn = ZODB.connection(fs)
     references = conn.root.references = {}
@@ -288,10 +287,10 @@ def check(config, refdb=None):
     finally:
         transaction.commit()
         conn.close()
-        if tempdir:
-            shutil.rmtree(tempdir)
 
 def _insert_ref(references, rname, roid, name, oid):
+    if references is None:
+        return False
     oid = u64(oid)
     roid = u64(roid)
     by_oid = references.get(name)
@@ -322,6 +321,8 @@ def _insert_ref(references, rname, roid, name, oid):
     return False
 
 def _get_referer(references, name, oid):
+    if references is None:
+        return
     by_oid = references.get(name)
     if by_oid:
         oid = u64(oid)
@@ -333,7 +334,7 @@ def _get_referer(references, name, oid):
             else:
                 return name, p64(iter(by_rname).next())
 
-def check_(config, references):
+def check_(config, references=None):
     db = ZODB.config.databaseFromFile(open(config))
     databases = db.databases
     storages = dict((name, db.storage) for (name, db) in databases.iteritems())
@@ -407,3 +408,21 @@ def check_command(args=None):
         parser.parse_args(['-h'])
 
     check(args[0], options.refdb)
+
+class References:
+
+    def __init__(self, db):
+        self._conn = ZODB.connection(db)
+        self._refs = self._conn.root.references
+
+    def __getitem__(self, (name, oid)):
+        if isinstance(oid, str):
+            oid = u64(oid)
+        by_rname = self._refs[name][oid]
+        if isinstance(by_rname, dict):
+            for rname, roids in by_rname.iteritems():
+                for roid in roids:
+                    yield rname, roid
+        else:
+            for roid in by_rname:
+                yield name, roid

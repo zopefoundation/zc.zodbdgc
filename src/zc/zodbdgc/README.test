@@ -386,10 +386,34 @@ Test the check command
     ...     d.close()
 
     >>> zc.zodbdgc.check_command(['config2'])
+    !!! db1 2216 ?
+    POSKeyError: 'No blob file'
+    !!! db2 2 ?
+    POSKeyError: 0x02
+
+We get a list of missing objects.  We don't get the refering objects.
+To get the, we have to use the -r option to specify the name of a
+database to use.
+
+    >>> zc.zodbdgc.check_command(['-rrefs.fs', 'config2'])
     !!! db1 2216 db1 0
     POSKeyError: 'No blob file'
     !!! db2 2 db1 1
     POSKeyError: 0x02
+
+Note that now we get information about what was referencing the
+missing object. Not just that, we also get a database we can use to
+query about any references:
+
+    >>> refs = zc.zodbdgc.References('refs.fs')
+    >>> list(refs['db2', 2])
+    [('db1', 1)]
+    >>> list(refs['db2', '\0'*7+'\2'])
+    [('db1', 1)]
+    >>> list(refs['db1', 1])
+    [('db1', 0)]
+
+
 
 Note that we see the missing link from db1 to db2.  There is not
 missing link from db1 to db3 because the referencing object was
@@ -408,10 +432,13 @@ If we see references to databases we haven't heard of, we just report them:
     ... """)
 
     >>> zc.zodbdgc.check_command(['config2'])
-    !!! db1 2216 db1 0
+    !!! db1 2216 ?
     POSKeyError: 'No blob file'
     !!! db2 2 db1 1
     bad db
+
+(Note that we get the refereing object info here because it is redily
+available at the time the bad reference is detected.)
 
 If a database is configured to not allow cross references, we complain
 about cross references that we see:
@@ -439,10 +466,10 @@ about cross references that we see:
     ... """)
 
     >>> zc.zodbdgc.check_command(['config2'])
-    !!! db1 2216 db1 0
+    !!! db1 2216 ?
     POSKeyError: 'No blob file'
     bad xref db2 2 db1 1
-    !!! db2 2 db1 1
+    !!! db2 2 ?
     POSKeyError: 0x02
 
 .. cleanup
