@@ -281,12 +281,12 @@ def check(config, refdb=None):
 
     fs = ZODB.FileStorage.FileStorage(refdb, create=True)
     conn = ZODB.connection(fs)
-    references = conn.root.references = {}
+    references = conn.root.references = BTrees.OOBTree.BTree()
     try:
         check_(config, references)
     finally:
         transaction.commit()
-        conn.close()
+        fs.close()
 
 def _insert_ref(references, rname, roid, name, oid):
     if references is None:
@@ -378,7 +378,7 @@ def check_(config, references=None):
 
             nreferences += _insert_ref(references, name, oid, *ref)
 
-            if nreferences > 10000:
+            if nreferences > 400:
                 transaction.commit()
                 nreferences = 0
 
