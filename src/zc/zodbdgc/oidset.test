@@ -92,7 +92,7 @@ name/oid pairs efficiently.
     >>> import pprint
 
     >>> pprint.pprint(
-    ...     sorted((name, u64(oid)) for (name, oid) in oids.iterator()),
+    ...     sorted((name, long(u64(oid))) for (name, oid) in oids.iterator()),
     ...     width=1)
     [('foo',
       0L),
@@ -110,7 +110,7 @@ name/oid pairs efficiently.
       34359738368L)]
 
     >>> pprint.pprint(
-    ...     sorted(u64(oid) for oid in oids.iterator('foo')),
+    ...     sorted(long(u64(oid)) for oid in oids.iterator('foo')),
     ...     width=1)
     [0L,
      2147483647L,
@@ -128,7 +128,7 @@ name/oid pairs efficiently.
     True
 
     >>> pprint.pprint(
-    ...     sorted((name, u64(oid)) for (name, oid) in oids.iterator()),
+    ...     sorted((name, long(u64(oid))) for (name, oid) in oids.iterator()),
     ...     width=1)
     [('bar',
       0L),
@@ -164,7 +164,7 @@ name/oid pairs efficiently.
     >>> oids.remove('foo', p64((1<<31)-1))
 
     >>> pprint.pprint(
-    ...     sorted(u64(oid) for oid in oids.iterator('foo')),
+    ...     sorted(long(u64(oid)) for oid in oids.iterator('foo')),
     ...     width=1)
     [0L,
      4294967296L,

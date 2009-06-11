@@ -15,14 +15,19 @@
 
 $Id$
 """
+from zope.testing import doctest, setupstack, renormalizing
+import re
 import unittest
-from zope.testing import doctest, setupstack
 
 def test_suite():
     return unittest.TestSuite((
         doctest.DocFileSuite(
             'README.test', 'oidset.test',
             setUp=setupstack.setUpDirectory, tearDown = setupstack.tearDown,
+            checker=renormalizing.RENormalizing([
+                (re.compile('usage'), 'Usage'),
+                (re.compile('options'), 'Options'),
+                ]),
             ),
         ))
 
