@@ -46,8 +46,10 @@ setup(
     packages = find_packages('src'),
     namespace_packages = ['zc'],
     package_dir = {'': 'src'},
-    install_requires = ['setuptools', 'ZODB3'],
+    install_requires = ['setuptools', 'ZODB3 >=3.9.0b2'],
     zip_safe = False,
     entry_points=entry_points,
     include_package_data = True,
+    tests_require=['zope.testing'],
+    test_suite='zc.zodbdgc.tests.test_suite',
     )
