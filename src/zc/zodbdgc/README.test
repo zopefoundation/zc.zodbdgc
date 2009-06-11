@@ -285,11 +285,12 @@ This time we'll use the command-line interface:
     >>> sys.argv[0] = 'test'
     >>> try: zc.zodbdgc.gc_command([])
     ... except SystemExit: pass
-    usage: test [options] config1 [config2]
+    Usage: test [options] config1 [config2]
     <BLANKLINE>
-    options:
+    Options:
       -h, --help            show this help message and exit
-      -d DAYS, --days=DAYS  Number of trailing days to treat as non-garbage
+      -d DAYS, --days=DAYS  Number of trailing days (defaults to 1) to treat as
+                            non-garbage
       -l LEVEL, --log-level=LEVEL
                             The logging level. The default is WARNING.
 
@@ -326,11 +327,12 @@ We can gc again, even with deleted records:
 
     >>> _ = [d.close() for d in db.databases.values()]
 
+
 >>> try: zc.zodbdgc.check_command([])
 ... except SystemExit: pass
-usage: test [options] config
+Usage: test [options] config
 <BLANKLINE>
-options:
+Options:
   -h, --help            show this help message and exit
   -r REFDB, --references-filestorage=REFDB
                         The name of a file-storage to save reference info in.
@@ -352,16 +354,15 @@ Make sure we can omit days on the command line:
     Removed 0 objects from db2
     []
 
-    >>> now += 90000
+Try with 0 days:
 
-    >>> sorted((name, u64(oid)) for (name, oid) in
-    ...        zc.zodbdgc.gc_command(['config', 'config2']).iterator())
+    >>> sorted((name, long(u64(oid))) for (name, oid) in
+    ...        zc.zodbdgc.gc_command(['-d0', 'config', 'config2']).iterator())
     Using secondary configuration, config2, for analysis
     Removed 0 objects from db1
     Removed 0 objects from db3
     Removed 2 objects from db2
     [('db2', 3L), ('db2', 4L)]
-
 
 Test the check command
 ----------------------

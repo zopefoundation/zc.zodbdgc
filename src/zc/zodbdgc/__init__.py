@@ -74,26 +74,27 @@ def gc(conf, days=1, conf2=None, batch_size=10000):
         for ref in getrefs(data, name):
             good.insert(*ref)
 
-        # All non-deleted new records are good
-        for trans in storage.iterator(ptid):
-            for record in trans:
-                oid = record.oid
-                data = record.data
-                if data:
-                    if deleted.has(name, oid):
-                        raise AssertionError(
-                            "Non-deleted record after deleted")
-                    good.insert(name, oid)
+        if days:
+            # All non-deleted new records are good
+            for trans in storage.iterator(ptid):
+                for record in trans:
+                    oid = record.oid
+                    data = record.data
+                    if data:
+                        if deleted.has(name, oid):
+                            raise AssertionError(
+                                "Non-deleted record after deleted")
+                        good.insert(name, oid)
 
-                    # and anything they reference
-                    for ref in getrefs(data, name):
-                        if not deleted.has(*ref):
-                            good.insert(*ref)
-                else:
-                    # deleted record
-                    deleted.insert(name, oid)
-                    if good.has(name, oid):
-                        good.remove(name, oid)
+                        # and anything they reference
+                        for ref in getrefs(data, name):
+                            if not deleted.has(*ref):
+                                good.insert(*ref)
+                    else:
+                        # deleted record
+                        deleted.insert(name, oid)
+                        if good.has(name, oid):
+                            good.remove(name, oid)
 
         # Now iterate over older records
         for trans in storage.iterator(None, ptid):
@@ -255,7 +256,7 @@ def gc_command(args=None):
     parser = optparse.OptionParser("usage: %prog [options] config1 [config2]")
     parser.add_option(
         '-d', '--days', dest='days', type='int', default=1,
-        help='Number of trailing days to treat as non-garbage')
+        help='Number of trailing days (defaults to 1) to treat as non-garbage')
     parser.add_option(
         '-l', '--log-level', dest='level',
         help='The logging level. The default is WARNING.')
