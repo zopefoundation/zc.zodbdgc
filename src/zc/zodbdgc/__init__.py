@@ -270,7 +270,11 @@ def gc_command(args=None):
         level = options.level
 
     if level:
-        logging.basicConfig(level=getattr(logging, level))
+        try:
+            level = int(level)
+        except ValueError:
+            level = getattr(logging, level)
+        logging.basicConfig(level=level)
 
     return gc(args[0], options.days, *args[1:])
 

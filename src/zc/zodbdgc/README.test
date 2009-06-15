@@ -327,6 +327,44 @@ We can gc again, even with deleted records:
 
     >>> _ = [d.close() for d in db.databases.values()]
 
+Check getting args from sys.argv, which sets a default level of
+logging:
+
+    >>> old_argv = sys.argv[:]
+    >>> old_basicConfig = logging.basicConfig
+    >>> def faux_basicConfig(*args, **kw):
+    ...     print 'basicConfig', args, kw
+    >>> logging.basicConfig = faux_basicConfig
+
+    >>> sys.argv[:] = ['-d2', 'config']
+    >>> sorted(zc.zodbdgc.gc_command().iterator())
+    basicConfig () {'level': 30}
+    Removed 0 objects from db1
+    Removed 0 objects from db3
+    Removed 0 objects from db2
+    []
+
+and check -l option handling:
+
+    >>> sys.argv[:] = ['-d2', '-l10', 'config']
+    >>> sorted(zc.zodbdgc.gc_command().iterator())
+    basicConfig () {'level': 10}
+    Removed 0 objects from db1
+    Removed 0 objects from db3
+    Removed 0 objects from db2
+    []
+
+    >>> sys.argv[:] = ['-d2', '-lINFO', 'config']
+    >>> sorted(zc.zodbdgc.gc_command().iterator())
+    basicConfig () {'level': 20}
+    Removed 0 objects from db1
+    Removed 0 objects from db3
+    Removed 0 objects from db2
+    []
+
+
+    >>> logging.basicConfig = old_basicConfig
+    >>> sys.argv[:] = old_argv
 
 >>> try: zc.zodbdgc.check_command([])
 ... except SystemExit: pass
