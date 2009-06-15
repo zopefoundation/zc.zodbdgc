@@ -44,13 +44,24 @@ def u64(v):
 
 logger = logging.getLogger(__name__)
 
-def gc(conf, days=1, conf2=None, batch_size=10000):
+def gc(conf, days=1, ignore=(), conf2=None, batch_size=10000):
+    close = []
+    try:
+        return gc_(close, conf, days, ignore, conf2, batch_size)
+    finally:
+        for db in close:
+            for db in db.databases.itervalues():
+                db.close()
+
+def gc_(close, conf, days, ignore, conf2, batch_size):
     db1 = ZODB.config.databaseFromFile(open(conf))
+    close.append(db1)
     if conf2 is None:
         db2 = db1
     else:
         logger.info("Using secondary configuration, %s, for analysis", conf2)
         db2 = ZODB.config.databaseFromFile(open(conf2))
+        close.append(db1)
         if set(db1.databases) != set(db2.databases):
             raise ValueError("primary and secondary databases don't match.")
 
@@ -71,7 +82,7 @@ def gc(conf, days=1, conf2=None, batch_size=10000):
         # Make sure we can get the roots
         data, s = storage.load(z64, '')
         good.insert(name, z64)
-        for ref in getrefs(data, name):
+        for ref in getrefs(data, name, ignore):
             good.insert(*ref)
 
         if days:
@@ -87,7 +98,7 @@ def gc(conf, days=1, conf2=None, batch_size=10000):
                         good.insert(name, oid)
 
                         # and anything they reference
-                        for ref in getrefs(data, name):
+                        for ref in getrefs(data, name, ignore):
                             if not deleted.has(*ref):
                                 good.insert(*ref)
                     else:
@@ -105,11 +116,11 @@ def gc(conf, days=1, conf2=None, batch_size=10000):
                     if deleted.has(name, oid):
                         continue
                     if good.has(name, oid):
-                        for ref in getrefs(data, name):
+                        for ref in getrefs(data, name, ignore):
                             if deleted.has(*ref):
                                 continue
                             if good.insert(*ref) and bad.has(*ref):
-                                bad_to_good(storages, bad, good, *ref)
+                                bad_to_good(storages, ignore, bad, good, *ref)
                     else:
                         bad.insert(name, oid)
                 else:
@@ -123,6 +134,7 @@ def gc(conf, days=1, conf2=None, batch_size=10000):
     if conf2 is not None:
         for db in db2.databases.itervalues():
             db.close()
+        close.pop()
 
     # Now, we have the garbage in bad.  Remove it.
     for name, db in db1.databases.iteritems():
@@ -149,14 +161,13 @@ def gc(conf, days=1, conf2=None, batch_size=10000):
         else:
             storage.tpc_abort(t)
             t.abort()
-        db.close()
 
     return bad
 
 def bad_path(baddir, name, oid):
     return os.path.join(baddir, name, base64.urlsafe_b64encode(oid))
 
-def bad_to_good(storages, bad, good, name, oid):
+def bad_to_good(storages, ignore, bad, good, name, oid):
 
     to_do = [(name, oid)]
     while to_do:
@@ -166,25 +177,26 @@ def bad_to_good(storages, bad, good, name, oid):
 
         for h in storage.history(oid, size=1<<99):
             data = storage.loadSerial(oid, h['tid'])
-            for ref in getrefs(data, name):
+            for ref in getrefs(data, name, ignore):
                 if good.insert(*ref) and bad.has(*ref):
                     to_do.append(ref)
 
-def getrefs(p, rname):
+def getrefs(p, rname, ignore):
     refs = []
     u = cPickle.Unpickler(cStringIO.StringIO(p))
     u.persistent_load = refs
     u.noload()
     u.noload()
     for ref in refs:
-        name = rname
         if isinstance(ref, tuple):
             yield rname, ref[0]
         elif isinstance(ref, str):
             yield rname, ref
         else:
             assert isinstance(ref, list)
-            yield ref[1][:2]
+            ref = ref[1]
+            if ref[0] not in ignore:
+                yield ref[:2]
 
 class oidset(dict):
 
@@ -258,6 +270,9 @@ def gc_command(args=None):
         '-d', '--days', dest='days', type='int', default=1,
         help='Number of trailing days (defaults to 1) to treat as non-garbage')
     parser.add_option(
+        '-i', '--ignore-database', dest='ignore', action='append',
+        help='Ignore references to the given database name.')
+    parser.add_option(
         '-l', '--log-level', dest='level',
         help='The logging level. The default is WARNING.')
 
@@ -276,7 +291,7 @@ def gc_command(args=None):
             level = getattr(logging, level)
         logging.basicConfig(level=level)
 
-    return gc(args[0], options.days, *args[1:])
+    return gc(args[0], options.days, options.ignore or (), *args[1:])
 
 
 
@@ -377,7 +392,7 @@ def check_(config, references=None):
             print "%s: %s" % (t.__name__, v)
             continue
 
-        for ref in getrefs(p, name):
+        for ref in getrefs(p, name, ()):
             if (ref[0] != name) and not databases[name].xrefs:
                 print 'bad xref', ref[0], u64(ref[1]), name, u64(oid)
 

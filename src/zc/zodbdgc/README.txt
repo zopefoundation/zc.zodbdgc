@@ -61,3 +61,18 @@ problems are found.
 
 You can run the script with the ``--help`` option to get usage
 information.
+
+Change History
+==============
+
+0.2.0 2009-06-15
+----------------
+
+- Added an option to ignore references to some databases.
+
+- Fixed a bug in handling of the logging level option.
+
+0.1.0 2009-06-11
+----------------
+
+Initial release

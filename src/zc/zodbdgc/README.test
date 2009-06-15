@@ -291,6 +291,8 @@ This time we'll use the command-line interface:
       -h, --help            show this help message and exit
       -d DAYS, --days=DAYS  Number of trailing days (defaults to 1) to treat as
                             non-garbage
+      -i IGNORE, --ignore-database=IGNORE
+                            Ignore references to the given database name.
       -l LEVEL, --log-level=LEVEL
                             The logging level. The default is WARNING.
 
@@ -510,6 +512,70 @@ about cross references that we see:
     bad xref db2 2 db1 1
     !!! db2 2 ?
     POSKeyError: 0x02
+
+
+Ignoring databases
+------------------
+
+Sometimes, when doing garbage collection, you want to ignore some
+databases.
+
+    >>> db = ZODB.config.databaseFromString("""
+    ... <zodb db1>
+    ...     <filestorage>
+    ...         path one.fs
+    ...         pack-gc false
+    ...     </filestorage>
+    ... </zodb>
+    ... <zodb db2>
+    ...     <filestorage>
+    ...         path two.fs
+    ...         pack-gc false
+    ...     </filestorage>
+    ... </zodb>
+    ... """)
+
+    >>> conn = db.open()
+    >>> conn.get_connection('db2').root.x = C()
+    >>> transaction.commit()
+    >>> conn.root.x = C()
+    >>> conn.root.x.x = conn.get_connection('db2').root.x
+    >>> transaction.commit()
+    >>> conn.root.a = C()
+    >>> transaction.commit()
+    >>> conn.root.b = C()
+    >>> conn.root.a.b = conn.root.b
+    >>> conn.root.b.a = conn.root.a
+    >>> transaction.commit()
+    >>> del conn.root.a
+    >>> del conn.root.b
+    >>> transaction.commit()
+
+    >>> now += 2*86400
+
+    >>> db.pack()
+
+    >>> _ = [db.close() for db in db.databases.itervalues()]
+
+    >>> open('config', 'w').write("""
+    ... <zodb db1>
+    ...     <filestorage>
+    ...         path one.fs
+    ...     </filestorage>
+    ... </zodb>
+    ... """)
+
+    >>> sorted(zc.zodbdgc.gc_command(['config']).iterator())
+    Traceback (most recent call last):
+    ...
+    KeyError: 'db2'
+
+    >>> sorted(zc.zodbdgc.gc_command(['-idb2', 'config']).iterator())
+    ... # doctest: +NORMALIZE_WHITESPACE
+    Removed 2 objects from db1
+    [('db1', '\x00\x00\x00\x00\x00\x00\x00\x02'),
+     ('db1', '\x00\x00\x00\x00\x00\x00\x00\x03')]
+
 
 .. cleanup
 
