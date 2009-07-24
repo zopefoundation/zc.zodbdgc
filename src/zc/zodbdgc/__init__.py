@@ -17,8 +17,10 @@ import BTrees.fsBTree
 import BTrees.OOBTree
 import BTrees.LLBTree
 import base64
+import bsddb
 import cPickle
 import cStringIO
+import itertools
 import logging
 import marshal
 import optparse
@@ -66,29 +68,34 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
             raise ValueError("primary and secondary databases don't match.")
 
     databases = db2.databases
-    storages = dict((name, d.storage) for (name, d) in databases.items())
+    storages = sorted((name, d.storage) for (name, d) in databases.items())
 
     ptid = repr(
         ZODB.TimeStamp.TimeStamp(*time.gmtime(time.time() - 86400*days)[:6])
         )
 
-    # Pre-populate good with roots and recently-written objects
     good = oidset(databases)
-    bad = oidset(databases)
-    both = good, bad
+    bad = Bad(databases)
     deleted = oidset(databases)
 
-    for name, storage in storages.iteritems():
+    for name, storage in storages:
+        logger.info("%s: roots", name)
         # Make sure we can get the roots
         data, s = storage.load(z64, '')
         good.insert(name, z64)
         for ref in getrefs(data, name, ignore):
             good.insert(*ref)
 
+        n = 0
         if days:
             # All non-deleted new records are good
+            logger.info("%s: recent", name)
             for trans in storage.iterator(ptid):
                 for record in trans:
+                    if n and n%10000 == 0:
+                        logger.info("%s: %s recent", name, n)
+                    n += 1
+
                     oid = record.oid
                     data = record.data
                     if data:
@@ -110,6 +117,10 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
         # Now iterate over older records
         for trans in storage.iterator(None, ptid):
             for record in trans:
+                if n and n%10000 == 0:
+                    logger.info("%s: %s old", name, n)
+                n += 1
+
                 oid = record.oid
                 data = record.data
                 if data:
@@ -120,9 +131,13 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
                             if deleted.has(*ref):
                                 continue
                             if good.insert(*ref) and bad.has(*ref):
-                                bad_to_good(storages, ignore, bad, good, *ref)
+                                to_do = [ref]
+                                while to_do:
+                                    for ref in bad.pop(*to_do.pop()):
+                                        if good.insert(*ref) and bad.has(*ref):
+                                            to_do.append(ref)
                     else:
-                        bad.insert(name, oid)
+                        bad.insert(name, oid, set(getrefs(data, name, ignore)))
                 else:
                     # deleted record
                     if good.has(name, oid):
@@ -136,8 +151,12 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
             db.close()
         close.pop()
 
+    good.close()
+    deleted.close()
+
     # Now, we have the garbage in bad.  Remove it.
-    for name, db in db1.databases.iteritems():
+    for name, db in sorted(db1.databases.iteritems()):
+        logger.info("%s: remove garbage", name)
         storage = db.storage
         t = transaction.begin()
         storage.tpc_begin(t)
@@ -150,6 +169,7 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
                 storage.tpc_vote(t)
                 storage.tpc_finish(t)
                 t.commit()
+                logger.info("%s: deleted %s", name, nd)
                 t = transaction.begin()
                 storage.tpc_begin(t)
 
@@ -163,23 +183,6 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
             t.abort()
 
     return bad
-
-def bad_path(baddir, name, oid):
-    return os.path.join(baddir, name, base64.urlsafe_b64encode(oid))
-
-def bad_to_good(storages, ignore, bad, good, name, oid):
-
-    to_do = [(name, oid)]
-    while to_do:
-        name, oid = to_do.pop()
-        bad.remove(name, oid)
-        storage = storages[name]
-
-        for h in storage.history(oid, size=1<<99):
-            data = storage.loadSerial(oid, h['tid'])
-            for ref in getrefs(data, name, ignore):
-                if good.insert(*ref) and bad.has(*ref):
-                    to_do.append(ref)
 
 def getrefs(p, rname, ignore):
     refs = []
@@ -198,65 +201,81 @@ def getrefs(p, rname, ignore):
             if ref[0] not in ignore:
                 yield ref[:2]
 
-class oidset(dict):
+class oidset:
 
     def __init__(self, names):
+        self._dbs = {}
+        self._paths = []
         for name in names:
-            self[name] = {}
+            fd, path = tempfile.mkstemp(dir='.')
+            os.close(fd)
+            self._dbs[name] = bsddb.hashopen(path)
+            self._paths.append(path)
+
+    def close(self):
+        for db in self._dbs.values():
+            db.close()
+        self._dbs.clear()
+        while self._paths:
+            os.remove(self._paths.pop())
 
     def insert(self, name, oid):
-        prefix = oid[:6]
-        suffix = oid[6:]
-        data = self[name].get(prefix)
-        if data is None:
-            data = self[name][prefix] = BTrees.fsBTree.TreeSet()
-        elif suffix in data:
+        db = self._dbs[name]
+        if oid in db:
             return False
-        data.insert(suffix)
+        db[oid] = ''
         return True
 
     def remove(self, name, oid):
-        prefix = oid[:6]
-        suffix = oid[6:]
-        data = self[name].get(prefix)
-        if data and suffix in data:
-            data.remove(suffix)
-            if not data:
-                del self[name][prefix]
-
-    def __nonzero__(self):
-        for v in self.itervalues():
-            if v:
-                return True
-        return False
+        db = self._dbs[name]
+        if oid in db:
+            del db[oid]
 
     def pop(self):
-        for name, data in self.iteritems():
-            if data:
-               break
-        prefix, s = data.iteritems().next()
-        suffix = s.maxKey()
-        s.remove(suffix)
-        if not s:
-            del data[prefix]
-        return name, prefix+suffix
+        for name, db in self._dbs.iteritems():
+            if db:
+                oid, _ = db.popitem()
+                return name, oid
+
+    def __nonzero__(self):
+        return sum(map(bool, self._dbs.itervalues()))
 
     def has(self, name, oid):
-        try:
-            data = self[name][oid[:6]]
-        except KeyError:
-            return False
-        return oid[6:] in data
+        db = self._dbs[name]
+        return oid in db
 
     def iterator(self, name=None):
         if name is None:
-            for name in self:
-                for oid in self.iterator(name):
+            for name in self._dbs:
+                for oid in self._dbs[name]:
                     yield name, oid
         else:
-            for prefix, data in self[name].iteritems():
-                for suffix in data:
-                    yield prefix+suffix
+            for oid in self._dbs[name]:
+                yield oid
+
+class Bad(oidset):
+
+    def insert(self, name, oid, refs):
+        db = self._dbs[name]
+        old = db.get(oid)
+        if old is None:
+            db[oid] = refs and marshal.dumps(list(refs)) or ''
+        else:
+            if old:
+                if refs:
+                    old = set(marshal.loads(old))
+                    refs = old.union(refs)
+                    if refs != old:
+                        db[oid] = marshal.dumps(list(refs))
+            elif refs:
+                db[oid] = marshal.dumps(list(refs))
+
+    def pop(self, name, oid):
+        refs = self._dbs[name].pop(oid)
+        if refs:
+            return marshal.loads(refs)
+        return ()
+
 
 def gc_command(args=None):
     if args is None:
