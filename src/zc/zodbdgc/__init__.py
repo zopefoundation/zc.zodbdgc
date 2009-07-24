@@ -17,7 +17,7 @@ import BTrees.fsBTree
 import BTrees.OOBTree
 import BTrees.LLBTree
 import base64
-import bsddb
+import bsddb3
 import cPickle
 import cStringIO
 import itertools
@@ -209,7 +209,7 @@ class oidset:
         for name in names:
             fd, path = tempfile.mkstemp(dir='.')
             os.close(fd)
-            self._dbs[name] = bsddb.hashopen(path)
+            self._dbs[name] = bsddb3.hashopen(path)
             self._paths.append(path)
 
     def close(self):
