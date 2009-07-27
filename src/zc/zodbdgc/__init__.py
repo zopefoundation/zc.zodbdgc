@@ -77,8 +77,9 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
         )
 
     good = oidset(databases)
-    bad = Bad(databases)
-    deleted = Deleted(databases)
+    bad = oidset(databases)
+    badrefs = BadRefs(databases)
+    deleted = oidset(databases)
 
     for name, storage in storages:
         logger.info("%s: roots", name)
@@ -135,11 +136,16 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
                             if good.insert(*ref) and bad.has(*ref):
                                 to_do = [ref]
                                 while to_do:
-                                    for ref in bad.pop(*to_do.pop()):
+                                    ref = to_do.pop()
+                                    bad.remove(*ref)
+                                    for ref in badrefs.pop(*ref):
                                         if good.insert(*ref) and bad.has(*ref):
                                             to_do.append(ref)
                     else:
-                        bad.insert(name, oid, set(getrefs(data, name, ignore)))
+                        bad.insert(name, oid)
+                        refs = set(getrefs(data, name, ignore))
+                        if refs:
+                            badrefs.insert(name, oid, refs)
                 else:
                     # deleted record
                     if good.has(name, oid):
@@ -147,6 +153,8 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
                     elif bad.has(name, oid):
                         bad.remove(name, oid)
                     deleted.insert(name, oid)
+
+    badrefs.close()
 
     if conf2 is not None:
         for db in db2.databases.itervalues():
@@ -203,16 +211,77 @@ def getrefs(p, rname, ignore):
             if ref[0] not in ignore:
                 yield ref[:2]
 
-class oidset:
+class oidset(dict):
+    """
+    {(name, oid)} implemented as:
 
-    type_ = 'good'
+       {name-> {oid[:6] -> {oid[-2:]}}}
+    """
+    def __init__(self, names):
+        for name in names:
+            self[name] = {}
+
+    def insert(self, name, oid):
+        prefix = oid[:6]
+        suffix = oid[6:]
+        data = self[name].get(prefix)
+        if data is None:
+            data = self[name][prefix] = BTrees.fsBTree.TreeSet()
+        elif suffix in data:
+            return False
+        data.insert(suffix)
+        return True
+
+    def remove(self, name, oid):
+        prefix = oid[:6]
+        suffix = oid[6:]
+        data = self[name].get(prefix)
+        if data and suffix in data:
+            data.remove(suffix)
+            if not data:
+                del self[name][prefix]
+
+    def __nonzero__(self):
+        for v in self.itervalues():
+            if v:
+                return True
+        return False
+
+    def pop(self):
+        for name, data in self.iteritems():
+            if data:
+               break
+        prefix, s = data.iteritems().next()
+        suffix = s.maxKey()
+        s.remove(suffix)
+        if not s:
+            del data[prefix]
+        return name, prefix+suffix
+
+    def has(self, name, oid):
+        try:
+            data = self[name][oid[:6]]
+        except KeyError:
+            return False
+        return oid[6:] in data
+
+    def iterator(self, name=None):
+        if name is None:
+            for name in self:
+                for oid in self.iterator(name):
+                    yield name, oid
+        else:
+            for prefix, data in self[name].iteritems():
+                for suffix in data:
+                    yield prefix+suffix
+
+class BadRefs:
 
     def __init__(self, names):
         self._dbs = {}
         self._paths = []
         for name in names:
-            fd, path = tempfile.mkstemp(
-                dir='.', prefix='db-'+name.strip()+'-', suffix=self.type_)
+            fd, path = tempfile.mkstemp(dir='.', prefix='db-'+name.strip()+'-')
             os.close(fd)
             self._dbs[name] = bsddb3.hashopen(path, cachesize=1<<24)
             self._paths.append(path)
@@ -223,23 +292,10 @@ class oidset:
         while self._paths:
             os.remove(self._paths.pop())
 
-    def insert(self, name, oid):
-        db = self._dbs[name]
-        if oid in db:
-            return False
-        db[oid] = ''
-        return True
-
     def remove(self, name, oid):
         db = self._dbs[name]
         if oid in db:
             del db[oid]
-
-    def pop(self):
-        for name, db in self._dbs.iteritems():
-            if db:
-                oid, _ = db.popitem()
-                return name, oid
 
     def __nonzero__(self):
         return sum(map(bool, self._dbs.itervalues()))
@@ -257,31 +313,22 @@ class oidset:
             for oid in self._dbs[name]:
                 yield oid
 
-class Deleted(oidset):
-
-    type_ = 'deleted'
-
-class Bad(oidset):
-
-    type_ = 'bad'
-
     def insert(self, name, oid, refs):
+        if not refs:
+            return
+
         db = self._dbs[name]
         old = db.get(oid)
-        if old is None:
-            db[oid] = refs and marshal.dumps(list(refs)) or ''
-        else:
-            if old:
-                if refs:
-                    old = set(marshal.loads(old))
-                    refs = old.union(refs)
-                    if refs != old:
-                        db[oid] = marshal.dumps(list(refs))
-            elif refs:
+        if old:
+            old = set(marshal.loads(old))
+            refs = old.union(refs)
+            if refs != old:
                 db[oid] = marshal.dumps(list(refs))
+        else:
+            db[oid] = marshal.dumps(list(refs))
 
     def pop(self, name, oid):
-        refs = self._dbs[name].pop(oid)
+        refs = self._dbs[name].pop(oid, ())
         if refs:
             return marshal.loads(refs)
         return ()
