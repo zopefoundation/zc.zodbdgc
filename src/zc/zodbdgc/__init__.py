@@ -34,6 +34,7 @@ import transaction
 import ZODB.blob
 import ZODB.config
 import ZODB.FileStorage
+import ZODB.POSException
 import ZODB.TimeStamp
 
 def p64(v):
@@ -45,6 +46,7 @@ def u64(v):
     return struct.unpack(">q", v)[0]
 
 logger = logging.getLogger(__name__)
+log_format = "%(asctime)s %(name)s %(levelname)s: %(message)s"
 
 def gc(conf, days=1, ignore=(), conf2=None, batch_size=10000):
     close = []
@@ -76,7 +78,7 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
 
     good = oidset(databases)
     bad = Bad(databases)
-    deleted = oidset(databases)
+    deleted = Deleted(databases)
 
     for name, storage in storages:
         logger.info("%s: roots", name)
@@ -151,9 +153,6 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
             db.close()
         close.pop()
 
-    good.close()
-    deleted.close()
-
     # Now, we have the garbage in bad.  Remove it.
     for name, db in sorted(db1.databases.iteritems()):
         logger.info("%s: remove garbage", name)
@@ -162,8 +161,11 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
         storage.tpc_begin(t)
         nd = 0
         for oid in bad.iterator(name):
-            p, s = storage.load(oid, '')
-            storage.deleteObject(oid, s, t)
+            try:
+                p, s = storage.load(oid, '')
+                storage.deleteObject(oid, s, t)
+            except ZODB.POSException.POSKeyError:
+                continue
             nd += 1
             if (nd % batch_size) == 0:
                 storage.tpc_vote(t)
@@ -203,19 +205,21 @@ def getrefs(p, rname, ignore):
 
 class oidset:
 
+    type_ = 'good'
+
     def __init__(self, names):
         self._dbs = {}
         self._paths = []
         for name in names:
-            fd, path = tempfile.mkstemp(dir='.')
+            fd, path = tempfile.mkstemp(
+                dir='.', prefix='db-'+name.strip()+'-', suffix=self.type_)
             os.close(fd)
-            self._dbs[name] = bsddb3.hashopen(path)
+            self._dbs[name] = bsddb3.hashopen(path, cachesize=1<<24)
             self._paths.append(path)
 
     def close(self):
         for db in self._dbs.values():
             db.close()
-        self._dbs.clear()
         while self._paths:
             os.remove(self._paths.pop())
 
@@ -253,7 +257,13 @@ class oidset:
             for oid in self._dbs[name]:
                 yield oid
 
+class Deleted(oidset):
+
+    type_ = 'deleted'
+
 class Bad(oidset):
+
+    type_ = 'bad'
 
     def insert(self, name, oid, refs):
         db = self._dbs[name]
@@ -308,7 +318,7 @@ def gc_command(args=None):
             level = int(level)
         except ValueError:
             level = getattr(logging, level)
-        logging.basicConfig(level=level)
+        logging.basicConfig(level=level, format=log_format)
 
     return gc(args[0], options.days, options.ignore or (), *args[1:])
 
@@ -434,7 +444,7 @@ def check_(config, references=None):
 def check_command(args=None):
     if args is None:
         args = sys.argv[1:]
-        logging.basicConfig(level=logging.WARNING)
+        logging.basicConfig(level=logging.WARNING, format=log_format)
 
     parser = optparse.OptionParser("usage: %prog [options] config")
     parser.add_option(
