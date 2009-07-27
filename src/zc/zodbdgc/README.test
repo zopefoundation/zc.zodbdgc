@@ -352,8 +352,8 @@ logging:
 
     >>> old_argv = sys.argv[:]
     >>> old_basicConfig = logging.basicConfig
-    >>> def faux_basicConfig(*args, **kw):
-    ...     print 'basicConfig', args, kw
+    >>> def faux_basicConfig(level=None, format=None):
+    ...     print 'basicConfig', (), dict(level=level)
     >>> logging.basicConfig = faux_basicConfig
 
     >>> sys.argv[:] = ['-d2', 'config']
