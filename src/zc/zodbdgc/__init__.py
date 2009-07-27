@@ -48,16 +48,61 @@ def u64(v):
 logger = logging.getLogger(__name__)
 log_format = "%(asctime)s %(name)s %(levelname)s: %(message)s"
 
-def gc(conf, days=1, ignore=(), conf2=None, batch_size=10000):
+def gc_command(args=None):
+    if args is None:
+        args = sys.argv[1:]
+        level = logging.WARNING
+    else:
+        level = None
+
+    parser = optparse.OptionParser("usage: %prog [options] config1 [config2]")
+    parser.add_option(
+        '-d', '--days', dest='days', type='int', default=1,
+        help='Number of trailing days (defaults to 1) to treat as non-garbage')
+    parser.add_option(
+        '-f', '--file-storage', dest='fs', action='append',
+        help='name=path, use the given file storage path for analysis of the.'
+             'named database')
+    parser.add_option(
+        '-i', '--ignore-database', dest='ignore', action='append',
+        help='Ignore references to the given database name.')
+    parser.add_option(
+        '-l', '--log-level', dest='level',
+        help='The logging level. The default is WARNING.')
+
+    options, args = parser.parse_args(args)
+
+    if not args or len(args) > 2:
+        parser.parse_args(['-h'])
+    elif len(args) == 2:
+        conf2=args[1]
+    else:
+        conf2 = None
+
+    if options.level:
+        level = options.level
+
+    if level:
+        try:
+            level = int(level)
+        except ValueError:
+            level = getattr(logging, level)
+        logging.basicConfig(level=level, format=log_format)
+
+    return gc(args[0], options.days, options.ignore or (), conf2=conf2,
+              fs=dict(o.split('=') for o in options.fs or ()))
+
+
+def gc(conf, days=1, ignore=(), conf2=None, batch_size=10000, fs=()):
     close = []
     try:
-        return gc_(close, conf, days, ignore, conf2, batch_size)
+        return gc_(close, conf, days, ignore, conf2, batch_size, fs)
     finally:
         for db in close:
             for db in db.databases.itervalues():
                 db.close()
 
-def gc_(close, conf, days, ignore, conf2, batch_size):
+def gc_(close, conf, days, ignore, conf2, batch_size, fs):
     db1 = ZODB.config.databaseFromFile(open(conf))
     close.append(db1)
     if conf2 is None:
@@ -93,7 +138,13 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
         if days:
             # All non-deleted new records are good
             logger.info("%s: recent", name)
-            for trans in storage.iterator(ptid):
+
+            if name in fs:
+                it = ZODB.FileStorage.FileIterator(fs[name], ptid)
+            else:
+                it = storage.iterator(ptid)
+
+            for trans in it:
                 for record in trans:
                     if n and n%10000 == 0:
                         logger.info("%s: %s recent", name, n)
@@ -118,7 +169,12 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
                             good.remove(name, oid)
 
         # Now iterate over older records
-        for trans in storage.iterator(None, ptid):
+        if name in fs:
+            it = ZODB.FileStorage.FileIterator(fs[name], None, ptid)
+        else:
+            it = storage.iterator(None, ptid)
+
+        for trans in it:
             for record in trans:
                 if n and n%10000 == 0:
                     logger.info("%s: %s old", name, n)
@@ -332,43 +388,6 @@ class BadRefs:
         if refs:
             return marshal.loads(refs)
         return ()
-
-
-def gc_command(args=None):
-    if args is None:
-        args = sys.argv[1:]
-        level = logging.WARNING
-    else:
-        level = None
-
-    parser = optparse.OptionParser("usage: %prog [options] config1 [config2]")
-    parser.add_option(
-        '-d', '--days', dest='days', type='int', default=1,
-        help='Number of trailing days (defaults to 1) to treat as non-garbage')
-    parser.add_option(
-        '-i', '--ignore-database', dest='ignore', action='append',
-        help='Ignore references to the given database name.')
-    parser.add_option(
-        '-l', '--log-level', dest='level',
-        help='The logging level. The default is WARNING.')
-
-    options, args = parser.parse_args(args)
-
-    if not args or len(args) > 2:
-        parser.parse_args(['-h'])
-
-    if options.level:
-        level = options.level
-
-    if level:
-        try:
-            level = int(level)
-        except ValueError:
-            level = getattr(logging, level)
-        logging.basicConfig(level=level, format=log_format)
-
-    return gc(args[0], options.days, options.ignore or (), *args[1:])
-
 
 
 def check(config, refdb=None):

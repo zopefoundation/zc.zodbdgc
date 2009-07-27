@@ -291,6 +291,9 @@ This time we'll use the command-line interface:
       -h, --help            show this help message and exit
       -d DAYS, --days=DAYS  Number of trailing days (defaults to 1) to treat as
                             non-garbage
+      -f FS, --file-storage=FS
+                            name=path, use the given file storage path for
+                            analysis of the.named database
       -i IGNORE, --ignore-database=IGNORE
                             Ignore references to the given database name.
       -l LEVEL, --log-level=LEVEL
@@ -639,6 +642,73 @@ databases.
     [('db1', '\x00\x00\x00\x00\x00\x00\x00\x02'),
      ('db1', '\x00\x00\x00\x00\x00\x00\x00\x03')]
 
+    >>> os.remove('one.fs')
+    >>> os.remove('two.fs')
+
+Using file-storage iterators directly
+-------------------------------------
+
+If the database under analysis is a file-storage, we can access teh
+files directly:
+
+
+    >>> open('config', 'w').write("""
+    ... <zodb db1>
+    ...     <filestorage>
+    ...         path one.fs
+    ...         pack-gc false
+    ...     </filestorage>
+    ... </zodb>
+    ... <zodb db2>
+    ...     <filestorage>
+    ...         path two.fs
+    ...         pack-gc false
+    ...     </filestorage>
+    ... </zodb>
+    ... """)
+    >>> db = ZODB.config.databaseFromFile(open('config'))
+    Ignoring index for one.fs
+    Ignoring index for two.fs
+
+    >>> conn = db.open()
+    >>> conn.get_connection('db2').root.x = C()
+    >>> transaction.commit()
+    >>> conn.root.x = C()
+    >>> conn.root.x.x = conn.get_connection('db2').root.x
+    >>> transaction.commit()
+    >>> conn.root.a = C()
+    >>> transaction.commit()
+    >>> conn.root.b = C()
+    >>> conn.root.a.b = conn.root.b
+    >>> conn.root.b.a = conn.root.a
+    >>> transaction.commit()
+    >>> del conn.root.a
+    >>> del conn.root.b
+    >>> transaction.commit()
+
+    >>> now += 2*86400
+
+    >>> db.pack()
+
+    >>> _ = [db.close() for db in db.databases.itervalues()]
+
+
+    >>> sorted(zc.zodbdgc.gc_command(['-fdb1=one.fs', '-fdb2=two.fs', 'config']
+    ... ).iterator())
+    ... # doctest: +NORMALIZE_WHITESPACE
+    db1: roots
+    db1: recent
+    db2: roots
+    db2: recent
+    db1: remove garbage
+    Removed 2 objects from db1
+    db2: remove garbage
+    Removed 0 objects from db2
+    [('db1', '\x00\x00\x00\x00\x00\x00\x00\x02'),
+     ('db1', '\x00\x00\x00\x00\x00\x00\x00\x03')]
+
+    >>> os.remove('one.fs')
+    >>> os.remove('two.fs')
 
 .. cleanup
 
