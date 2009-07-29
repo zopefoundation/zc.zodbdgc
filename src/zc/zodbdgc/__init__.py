@@ -122,8 +122,7 @@ def gc_(close, conf, days, ignore, conf2, batch_size, fs):
         )
 
     good = oidset(databases)
-    bad = oidset(databases)
-    badrefs = BadRefs(databases)
+    bad = Bad(databases)
     deleted = oidset(databases)
 
     for name, storage in storages:
@@ -192,16 +191,12 @@ def gc_(close, conf, days, ignore, conf2, batch_size, fs):
                             if good.insert(*ref) and bad.has(*ref):
                                 to_do = [ref]
                                 while to_do:
-                                    ref = to_do.pop()
-                                    bad.remove(*ref)
-                                    for ref in badrefs.pop(*ref):
+                                    for ref in bad.pop(*to_do.pop()):
                                         if good.insert(*ref) and bad.has(*ref):
                                             to_do.append(ref)
                     else:
-                        bad.insert(name, oid)
-                        refs = set(getrefs(data, name, ignore))
-                        if refs:
-                            badrefs.insert(name, oid, refs)
+                        bad.insert(name, oid, record.tid,
+                                   getrefs(data, name, ignore))
                 else:
                     # deleted record
                     if good.has(name, oid):
@@ -209,8 +204,6 @@ def gc_(close, conf, days, ignore, conf2, batch_size, fs):
                     elif bad.has(name, oid):
                         bad.remove(name, oid)
                     deleted.insert(name, oid)
-
-    badrefs.close()
 
     if conf2 is not None:
         for db in db2.databases.itervalues():
@@ -224,11 +217,11 @@ def gc_(close, conf, days, ignore, conf2, batch_size, fs):
         t = transaction.begin()
         storage.tpc_begin(t)
         nd = 0
-        for oid in bad.iterator(name):
+        for oid, tid in bad.iterator(name):
             try:
-                p, s = storage.load(oid, '')
-                storage.deleteObject(oid, s, t)
-            except ZODB.POSException.POSKeyError:
+                storage.deleteObject(oid, tid, t)
+            except (ZODB.POSException.POSKeyError,
+                    ZODB.POSException.ConflictError):
                 continue
             nd += 1
             if (nd % batch_size) == 0:
@@ -331,7 +324,7 @@ class oidset(dict):
                 for suffix in data:
                     yield prefix+suffix
 
-class BadRefs:
+class Bad:
 
     def __init__(self, names):
         self._dbs = {}
@@ -366,27 +359,24 @@ class BadRefs:
                 for oid in self._dbs[name]:
                     yield name, oid
         else:
-            for oid in self._dbs[name]:
-                yield oid
+            for oid, data in self._dbs[name].iteritems():
+                tid = marshal.loads(data)[0]
+                yield oid, tid
 
-    def insert(self, name, oid, refs):
-        if not refs:
-            return
-
+    def insert(self, name, oid, tid, refs):
         db = self._dbs[name]
         old = db.get(oid)
         if old:
-            old = set(marshal.loads(old))
-            refs = old.union(refs)
-            if refs != old:
-                db[oid] = marshal.dumps(list(refs))
-        else:
-            db[oid] = marshal.dumps(list(refs))
+            oldtid, oldrefs = marshal.loads(old)
+            refs = set(oldrefs).union(refs)
+            tid = max(tid, oldtid)
+
+        db[oid] = marshal.dumps((tid, list(refs)))
 
     def pop(self, name, oid):
         refs = self._dbs[name].pop(oid, ())
         if refs:
-            return marshal.loads(refs)
+            return marshal.loads(refs)[1]
         return ()
 
 
