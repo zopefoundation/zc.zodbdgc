@@ -17,7 +17,6 @@ import BTrees.fsBTree
 import BTrees.OOBTree
 import BTrees.LLBTree
 import base64
-import bsddb3
 import cPickle
 import cStringIO
 import itertools
@@ -34,6 +33,7 @@ import transaction
 import ZODB.blob
 import ZODB.config
 import ZODB.FileStorage
+import ZODB.fsIndex
 import ZODB.POSException
 import ZODB.TimeStamp
 
@@ -327,19 +327,12 @@ class oidset(dict):
 class Bad:
 
     def __init__(self, names):
+        self._file = tempfile.TemporaryFile(dir='.', prefix='gcbad')
+        self.close = self._file.close
+        self._pos = 0
         self._dbs = {}
-        self._paths = []
         for name in names:
-            fd, path = tempfile.mkstemp(dir='.', prefix='db-'+name.strip()+'-')
-            os.close(fd)
-            self._dbs[name] = bsddb3.hashopen(path, cachesize=1<<24)
-            self._paths.append(path)
-
-    def close(self):
-        for db in self._dbs.values():
-            db.close()
-        while self._paths:
-            os.remove(self._paths.pop())
+            self._dbs[name] = ZODB.fsIndex.fsIndex()
 
     def remove(self, name, oid):
         db = self._dbs[name]
@@ -347,6 +340,7 @@ class Bad:
             del db[oid]
 
     def __nonzero__(self):
+        raise SystemError('wtf')
         return sum(map(bool, self._dbs.itervalues()))
 
     def has(self, name, oid):
@@ -359,25 +353,35 @@ class Bad:
                 for oid in self._dbs[name]:
                     yield name, oid
         else:
-            for oid, data in self._dbs[name].iteritems():
-                tid = marshal.loads(data)[0]
-                yield oid, tid
+            f = self._file
+            for oid, pos in self._dbs[name].iteritems():
+                f.seek(pos)
+                yield oid, marshal.load(f)[0]
 
     def insert(self, name, oid, tid, refs):
+        f = self._file
         db = self._dbs[name]
-        old = db.get(oid)
-        if old:
-            oldtid, oldrefs = marshal.loads(old)
+        pos = db.get(oid)
+        if pos is not None:
+            f.seek(pos)
+            oldtid, oldrefs = marshal.load(f)
             refs = set(oldrefs).union(refs)
             tid = max(tid, oldtid)
 
-        db[oid] = marshal.dumps((tid, list(refs)))
+        db[oid] = pos = self._pos
+        f.seek(pos)
+        marshal.dump((tid, list(refs)), f)
+        self._pos = f.tell()
 
     def pop(self, name, oid):
-        refs = self._dbs[name].pop(oid, ())
-        if refs:
-            return marshal.loads(refs)[1]
-        return ()
+        db = self._dbs[name]
+        pos = db.get(oid, None)
+        if pos is None:
+            return ()
+        del db[oid]
+        f = self._file
+        f.seek(pos)
+        return marshal.load(f)[1]
 
 
 def check(config, refdb=None):
