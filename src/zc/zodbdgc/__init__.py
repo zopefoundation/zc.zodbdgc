@@ -356,21 +356,29 @@ class Bad:
             f = self._file
             for oid, pos in self._dbs[name].iteritems():
                 f.seek(pos)
-                yield oid, marshal.load(f)[0]
+                yield oid, f.read(8)
 
     def insert(self, name, oid, tid, refs):
+        assert len(tid) == 8
         f = self._file
         db = self._dbs[name]
         pos = db.get(oid)
         if pos is not None:
             f.seek(pos)
-            oldtid, oldrefs = marshal.load(f)
-            refs = set(oldrefs).union(refs)
+            tid = f.read(8)
+            oldrefs = set(marshal.load(f))
+            refs = oldrefs.union(refs)
             tid = max(tid, oldtid)
+            if refs == oldrefs:
+                if tid != oldtid:
+                    f.seek(pos)
+                    f.write(tid)
+                return
 
         db[oid] = pos = self._pos
         f.seek(pos)
-        marshal.dump((tid, list(refs)), f)
+        f.write(tid)
+        marshal.dump(list(refs), f)
         self._pos = f.tell()
 
     def pop(self, name, oid):
@@ -380,8 +388,8 @@ class Bad:
             return ()
         del db[oid]
         f = self._file
-        f.seek(pos)
-        return marshal.load(f)[1]
+        f.seek(pos+8)
+        return marshal.load(f)
 
 
 def check(config, refdb=None):
