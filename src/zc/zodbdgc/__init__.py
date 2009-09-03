@@ -19,6 +19,7 @@ import BTrees.LLBTree
 import base64
 import cPickle
 import cStringIO
+import itertools
 import logging
 import marshal
 import optparse
@@ -32,6 +33,8 @@ import transaction
 import ZODB.blob
 import ZODB.config
 import ZODB.FileStorage
+import ZODB.fsIndex
+import ZODB.POSException
 import ZODB.TimeStamp
 
 def p64(v):
@@ -43,17 +46,63 @@ def u64(v):
     return struct.unpack(">q", v)[0]
 
 logger = logging.getLogger(__name__)
+log_format = "%(asctime)s %(name)s %(levelname)s: %(message)s"
 
-def gc(conf, days=1, ignore=(), conf2=None, batch_size=10000):
+def gc_command(args=None):
+    if args is None:
+        args = sys.argv[1:]
+        level = logging.WARNING
+    else:
+        level = None
+
+    parser = optparse.OptionParser("usage: %prog [options] config1 [config2]")
+    parser.add_option(
+        '-d', '--days', dest='days', type='int', default=1,
+        help='Number of trailing days (defaults to 1) to treat as non-garbage')
+    parser.add_option(
+        '-f', '--file-storage', dest='fs', action='append',
+        help='name=path, use the given file storage path for analysis of the.'
+             'named database')
+    parser.add_option(
+        '-i', '--ignore-database', dest='ignore', action='append',
+        help='Ignore references to the given database name.')
+    parser.add_option(
+        '-l', '--log-level', dest='level',
+        help='The logging level. The default is WARNING.')
+
+    options, args = parser.parse_args(args)
+
+    if not args or len(args) > 2:
+        parser.parse_args(['-h'])
+    elif len(args) == 2:
+        conf2=args[1]
+    else:
+        conf2 = None
+
+    if options.level:
+        level = options.level
+
+    if level:
+        try:
+            level = int(level)
+        except ValueError:
+            level = getattr(logging, level)
+        logging.basicConfig(level=level, format=log_format)
+
+    return gc(args[0], options.days, options.ignore or (), conf2=conf2,
+              fs=dict(o.split('=') for o in options.fs or ()))
+
+
+def gc(conf, days=1, ignore=(), conf2=None, batch_size=10000, fs=()):
     close = []
     try:
-        return gc_(close, conf, days, ignore, conf2, batch_size)
+        return gc_(close, conf, days, ignore, conf2, batch_size, fs)
     finally:
         for db in close:
             for db in db.databases.itervalues():
                 db.close()
 
-def gc_(close, conf, days, ignore, conf2, batch_size):
+def gc_(close, conf, days, ignore, conf2, batch_size, fs):
     db1 = ZODB.config.databaseFromFile(open(conf))
     close.append(db1)
     if conf2 is None:
@@ -66,29 +115,40 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
             raise ValueError("primary and secondary databases don't match.")
 
     databases = db2.databases
-    storages = dict((name, d.storage) for (name, d) in databases.items())
+    storages = sorted((name, d.storage) for (name, d) in databases.items())
 
     ptid = repr(
         ZODB.TimeStamp.TimeStamp(*time.gmtime(time.time() - 86400*days)[:6])
         )
 
-    # Pre-populate good with roots and recently-written objects
     good = oidset(databases)
-    bad = oidset(databases)
-    both = good, bad
+    bad = Bad(databases)
     deleted = oidset(databases)
 
-    for name, storage in storages.iteritems():
+    for name, storage in storages:
+        logger.info("%s: roots", name)
         # Make sure we can get the roots
         data, s = storage.load(z64, '')
         good.insert(name, z64)
         for ref in getrefs(data, name, ignore):
             good.insert(*ref)
 
+        n = 0
         if days:
             # All non-deleted new records are good
-            for trans in storage.iterator(ptid):
+            logger.info("%s: recent", name)
+
+            if name in fs:
+                it = ZODB.FileStorage.FileIterator(fs[name], ptid)
+            else:
+                it = storage.iterator(ptid)
+
+            for trans in it:
                 for record in trans:
+                    if n and n%10000 == 0:
+                        logger.info("%s: %s recent", name, n)
+                    n += 1
+
                     oid = record.oid
                     data = record.data
                     if data:
@@ -108,8 +168,17 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
                             good.remove(name, oid)
 
         # Now iterate over older records
-        for trans in storage.iterator(None, ptid):
+        if name in fs:
+            it = ZODB.FileStorage.FileIterator(fs[name], None, ptid)
+        else:
+            it = storage.iterator(None, ptid)
+
+        for trans in it:
             for record in trans:
+                if n and n%10000 == 0:
+                    logger.info("%s: %s old", name, n)
+                n += 1
+
                 oid = record.oid
                 data = record.data
                 if data:
@@ -120,9 +189,14 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
                             if deleted.has(*ref):
                                 continue
                             if good.insert(*ref) and bad.has(*ref):
-                                bad_to_good(storages, ignore, bad, good, *ref)
+                                to_do = [ref]
+                                while to_do:
+                                    for ref in bad.pop(*to_do.pop()):
+                                        if good.insert(*ref) and bad.has(*ref):
+                                            to_do.append(ref)
                     else:
-                        bad.insert(name, oid)
+                        bad.insert(name, oid, record.tid,
+                                   getrefs(data, name, ignore))
                 else:
                     # deleted record
                     if good.has(name, oid):
@@ -137,19 +211,24 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
         close.pop()
 
     # Now, we have the garbage in bad.  Remove it.
-    for name, db in db1.databases.iteritems():
+    for name, db in sorted(db1.databases.iteritems()):
+        logger.info("%s: remove garbage", name)
         storage = db.storage
         t = transaction.begin()
         storage.tpc_begin(t)
         nd = 0
-        for oid in bad.iterator(name):
-            p, s = storage.load(oid, '')
-            storage.deleteObject(oid, s, t)
+        for oid, tid in bad.iterator(name):
+            try:
+                storage.deleteObject(oid, tid, t)
+            except (ZODB.POSException.POSKeyError,
+                    ZODB.POSException.ConflictError):
+                continue
             nd += 1
             if (nd % batch_size) == 0:
                 storage.tpc_vote(t)
                 storage.tpc_finish(t)
                 t.commit()
+                logger.info("%s: deleted %s", name, nd)
                 t = transaction.begin()
                 storage.tpc_begin(t)
 
@@ -163,23 +242,6 @@ def gc_(close, conf, days, ignore, conf2, batch_size):
             t.abort()
 
     return bad
-
-def bad_path(baddir, name, oid):
-    return os.path.join(baddir, name, base64.urlsafe_b64encode(oid))
-
-def bad_to_good(storages, ignore, bad, good, name, oid):
-
-    to_do = [(name, oid)]
-    while to_do:
-        name, oid = to_do.pop()
-        bad.remove(name, oid)
-        storage = storages[name]
-
-        for h in storage.history(oid, size=1<<99):
-            data = storage.loadSerial(oid, h['tid'])
-            for ref in getrefs(data, name, ignore):
-                if good.insert(*ref) and bad.has(*ref):
-                    to_do.append(ref)
 
 def getrefs(p, rname, ignore):
     refs = []
@@ -199,7 +261,11 @@ def getrefs(p, rname, ignore):
                 yield ref[:2]
 
 class oidset(dict):
+    """
+    {(name, oid)} implemented as:
 
+       {name-> {oid[:6] -> {oid[-2:]}}}
+    """
     def __init__(self, names):
         for name in names:
             self[name] = {}
@@ -258,41 +324,72 @@ class oidset(dict):
                 for suffix in data:
                     yield prefix+suffix
 
-def gc_command(args=None):
-    if args is None:
-        args = sys.argv[1:]
-        level = logging.WARNING
-    else:
-        level = None
+class Bad:
 
-    parser = optparse.OptionParser("usage: %prog [options] config1 [config2]")
-    parser.add_option(
-        '-d', '--days', dest='days', type='int', default=1,
-        help='Number of trailing days (defaults to 1) to treat as non-garbage')
-    parser.add_option(
-        '-i', '--ignore-database', dest='ignore', action='append',
-        help='Ignore references to the given database name.')
-    parser.add_option(
-        '-l', '--log-level', dest='level',
-        help='The logging level. The default is WARNING.')
+    def __init__(self, names):
+        self._file = tempfile.TemporaryFile(dir='.', prefix='gcbad')
+        self.close = self._file.close
+        self._pos = 0
+        self._dbs = {}
+        for name in names:
+            self._dbs[name] = ZODB.fsIndex.fsIndex()
 
-    options, args = parser.parse_args(args)
+    def remove(self, name, oid):
+        db = self._dbs[name]
+        if oid in db:
+            del db[oid]
 
-    if not args or len(args) > 2:
-        parser.parse_args(['-h'])
+    def __nonzero__(self):
+        raise SystemError('wtf')
+        return sum(map(bool, self._dbs.itervalues()))
 
-    if options.level:
-        level = options.level
+    def has(self, name, oid):
+        db = self._dbs[name]
+        return oid in db
 
-    if level:
-        try:
-            level = int(level)
-        except ValueError:
-            level = getattr(logging, level)
-        logging.basicConfig(level=level)
+    def iterator(self, name=None):
+        if name is None:
+            for name in self._dbs:
+                for oid in self._dbs[name]:
+                    yield name, oid
+        else:
+            f = self._file
+            for oid, pos in self._dbs[name].iteritems():
+                f.seek(pos)
+                yield oid, f.read(8)
 
-    return gc(args[0], options.days, options.ignore or (), *args[1:])
+    def insert(self, name, oid, tid, refs):
+        assert len(tid) == 8
+        f = self._file
+        db = self._dbs[name]
+        pos = db.get(oid)
+        if pos is not None:
+            f.seek(pos)
+            tid = f.read(8)
+            oldrefs = set(marshal.load(f))
+            refs = oldrefs.union(refs)
+            tid = max(tid, oldtid)
+            if refs == oldrefs:
+                if tid != oldtid:
+                    f.seek(pos)
+                    f.write(tid)
+                return
 
+        db[oid] = pos = self._pos
+        f.seek(pos)
+        f.write(tid)
+        marshal.dump(list(refs), f)
+        self._pos = f.tell()
+
+    def pop(self, name, oid):
+        db = self._dbs[name]
+        pos = db.get(oid, None)
+        if pos is None:
+            return ()
+        del db[oid]
+        f = self._file
+        f.seek(pos+8)
+        return marshal.load(f)
 
 
 def check(config, refdb=None):
@@ -415,7 +512,7 @@ def check_(config, references=None):
 def check_command(args=None):
     if args is None:
         args = sys.argv[1:]
-        logging.basicConfig(level=logging.WARNING)
+        logging.basicConfig(level=logging.WARNING, format=log_format)
 
     parser = optparse.OptionParser("usage: %prog [options] config")
     parser.add_option(

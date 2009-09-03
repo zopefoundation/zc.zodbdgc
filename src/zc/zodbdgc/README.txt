@@ -27,6 +27,12 @@ analysis can be performed using secondary storages, which are usually
 lightly loaded.  This is helpful because finding garbage places a
 significant load on the databases used to find garbage.
 
+If your database uses file-storages, then rather than specifying a
+second configuration file, you can use the -f option to specify
+file-storage iterators for finding garbage.  Using file storage
+iterators is much faster than using a ZEO connection and is faster and
+requires less memory than opening a read-only file storage on the files.
+
 Some number of trailing days (1 by default) of database records are
 considered good, meaning the objects referenced by them are not
 garbage. This allows the garbage-collection algorithm to work more
@@ -37,6 +43,7 @@ moving objects in 2 transactions.
 Options can be used to control the number of days of trailing data to
 be treated as non garbage and to specify the logging level.  Use the
 ``--help`` option to get details.
+
 
 multi-zodb-check-refs
 ---------------------
@@ -64,6 +71,20 @@ information.
 
 Change History
 ==============
+
+0.3.0 2009-09-03
+----------------
+
+- Optimized garbage collection by using a temporary file to
+  store object references rather than loading them from the analysis
+  database when needed.
+
+- Added an -f option to specify file-storage files directly.  It is
+  wildly faster to iterate over a file storage than over a ZEO
+  connection.  Using this option uses a file iterator rather than
+  opening a file storage in read-only mode, which avoids scanning the
+  database to build an index and aviods the memory cost of a
+  file-storage index.
 
 0.2.0 2009-06-15
 ----------------
