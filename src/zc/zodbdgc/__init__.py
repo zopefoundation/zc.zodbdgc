@@ -16,15 +16,11 @@ from ZODB.utils import z64
 import BTrees.fsBTree
 import BTrees.OOBTree
 import BTrees.LLBTree
-import base64
 import cPickle
 import cStringIO
-import itertools
 import logging
 import marshal
 import optparse
-import os
-import shutil
 import struct
 import sys
 import tempfile
