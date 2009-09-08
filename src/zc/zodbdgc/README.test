@@ -192,7 +192,7 @@ Save databases for later:
 Now let's perform gc.
 
     >>> import zc.zodbdgc
-    >>> bad = zc.zodbdgc.gc('config', days=2, batch_size=2)
+    >>> bad = zc.zodbdgc.gc('config', days=2)
 
     >>> for name, oid in sorted(bad.iterator()):
     ...     print name, u64(oid)

@@ -89,16 +89,16 @@ def gc_command(args=None):
               fs=dict(o.split('=') for o in options.fs or ()))
 
 
-def gc(conf, days=1, ignore=(), conf2=None, batch_size=10000, fs=()):
+def gc(conf, days=1, ignore=(), conf2=None, fs=()):
     close = []
     try:
-        return gc_(close, conf, days, ignore, conf2, batch_size, fs)
+        return gc_(close, conf, days, ignore, conf2, fs)
     finally:
         for db in close:
             for db in db.databases.itervalues():
                 db.close()
 
-def gc_(close, conf, days, ignore, conf2, batch_size, fs):
+def gc_(close, conf, days, ignore, conf2, fs):
     db1 = ZODB.config.databaseFromFile(open(conf))
     close.append(db1)
     if conf2 is None:
@@ -207,12 +207,14 @@ def gc_(close, conf, days, ignore, conf2, batch_size, fs):
         close.pop()
 
     # Now, we have the garbage in bad.  Remove it.
+    batch_size = 100
     for name, db in sorted(db1.databases.iteritems()):
         logger.info("%s: remove garbage", name)
         storage = db.storage
         t = transaction.begin()
         storage.tpc_begin(t)
         nd = 0
+        start = time.time()
         for oid, tid in bad.iterator(name):
             try:
                 storage.deleteObject(oid, tid, t)
@@ -225,6 +227,9 @@ def gc_(close, conf, days, ignore, conf2, batch_size, fs):
                 storage.tpc_finish(t)
                 t.commit()
                 logger.info("%s: deleted %s", name, nd)
+                duration = time.time()-start
+                time.sleep(duration*2)
+                batch_size = max(10, int(batch_size*.5/duration))
                 t = transaction.begin()
                 storage.tpc_begin(t)
 
