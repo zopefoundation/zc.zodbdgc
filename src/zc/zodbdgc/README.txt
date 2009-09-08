@@ -72,6 +72,19 @@ information.
 Change History
 ==============
 
+0.4.0 2009-09-08
+----------------
+
+- The previous version deleted too many objects at a time, which could
+  put too much load on a heavily loaded storage server.
+
+  - Add a sleep or allow the storage to rest after a set of deletions.
+    Sleep for twice the time taken to perform the deletions.
+
+  - Adjust the deletion batch size to take about .5 seconds per
+    batch of deletions, but do at least 10 at a time.
+
+
 0.3.0 2009-09-03
 ----------------
 
