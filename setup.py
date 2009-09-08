@@ -12,7 +12,7 @@
 #
 ##############################################################################
 
-name, version = 'zc.zodbdgc', '0'
+name, version = 'zc.zodbdgc', '0.4.0'
 
 import os
 from setuptools import setup, find_packages
