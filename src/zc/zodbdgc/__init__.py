@@ -211,9 +211,9 @@ def gc_(close, conf, days, ignore, conf2, fs):
     for name, db in sorted(db1.databases.iteritems()):
         logger.info("%s: remove garbage", name)
         storage = db.storage
+        nd = 0
         t = transaction.begin()
         storage.tpc_begin(t)
-        nd = 0
         start = time.time()
         for oid, tid in bad.iterator(name):
             try:
@@ -232,6 +232,7 @@ def gc_(close, conf, days, ignore, conf2, fs):
                 batch_size = max(10, int(batch_size*.5/duration))
                 t = transaction.begin()
                 storage.tpc_begin(t)
+                start = time.time()
 
         logger.info("Removed %s objects from %s", nd, name)
         if nd:
