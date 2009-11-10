@@ -72,6 +72,12 @@ information.
 Change History
 ==============
 
+0.5.0 2009-11-10
+----------------
+
+- Fixed a bug in the delet throttle that made it delete objects way
+  too slowly.
+
 0.4.0 2009-09-08
 ----------------
 
@@ -83,7 +89,6 @@ Change History
 
   - Adjust the deletion batch size to take about .5 seconds per
     batch of deletions, but do at least 10 at a time.
-
 
 0.3.0 2009-09-03
 ----------------
