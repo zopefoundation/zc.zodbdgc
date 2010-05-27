@@ -44,7 +44,7 @@ def u64(v):
 logger = logging.getLogger(__name__)
 log_format = "%(asctime)s %(name)s %(levelname)s: %(message)s"
 
-def gc_command(args=None):
+def gc_command(args=None, ptid=None):
     if args is None:
         args = sys.argv[1:]
         level = logging.WARNING
@@ -65,6 +65,10 @@ def gc_command(args=None):
     parser.add_option(
         '-l', '--log-level', dest='level',
         help='The logging level. The default is WARNING.')
+    parser.add_option(
+        '-u', '--untransform', dest='untransform',
+        help='Funciion (module:expr) used to untransform data records in'
+        ' files identified using the -file-storage/-f option')
 
     options, args = parser.parse_args(args)
 
@@ -85,20 +89,38 @@ def gc_command(args=None):
             level = getattr(logging, level)
         logging.basicConfig(level=level, format=log_format)
 
+    untransform = options.untransform
+    if untransform is not None:
+        mod, expr = untransform.split(':', 1)
+        untransform = eval(expr, __import__(mod, {}, {}, ['*']).__dict__)
+
     return gc(args[0], options.days, options.ignore or (), conf2=conf2,
-              fs=dict(o.split('=') for o in options.fs or ()))
+              fs=dict(o.split('=') for o in options.fs or ()),
+              untransform=untransform, ptid=ptid)
 
 
-def gc(conf, days=1, ignore=(), conf2=None, fs=()):
+def gc(conf, days=1, ignore=(), conf2=None, fs=(), untransform=None, ptid=None):
     close = []
     try:
-        return gc_(close, conf, days, ignore, conf2, fs)
+        return gc_(close, conf, days, ignore, conf2, fs, untransform, ptid)
     finally:
         for db in close:
             for db in db.databases.itervalues():
                 db.close()
 
-def gc_(close, conf, days, ignore, conf2, fs):
+def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
+
+    FileIterator = ZODB.FileStorage.FileIterator
+    if untransform is not None:
+        def FileIterator(*args):
+            def transit(trans):
+                for record in trans:
+                    if record.data:
+                        record.data = untransform(record.data)
+                    yield record
+            for t in ZODB.FileStorage.FileIterator(*args):
+                yield transit(t)
+
     db1 = ZODB.config.databaseFromFile(open(conf))
     close.append(db1)
     if conf2 is None:
@@ -113,16 +135,19 @@ def gc_(close, conf, days, ignore, conf2, fs):
     databases = db2.databases
     storages = sorted((name, d.storage) for (name, d) in databases.items())
 
-    ptid = repr(
-        ZODB.TimeStamp.TimeStamp(*time.gmtime(time.time() - 86400*days)[:6])
-        )
+    if ptid is None:
+        ptid = repr(
+            ZODB.TimeStamp.TimeStamp(
+                *time.gmtime(time.time() - 86400*days)[:6]
+                ))
 
     good = oidset(databases)
     bad = Bad(databases)
     deleted = oidset(databases)
 
     for name, storage in storages:
-        logger.info("%s: roots", name)
+        fsname = name or ''
+        logger.info("%s: roots", fsname)
         # Make sure we can get the roots
         data, s = storage.load(z64, '')
         good.insert(name, z64)
@@ -134,8 +159,8 @@ def gc_(close, conf, days, ignore, conf2, fs):
             # All non-deleted new records are good
             logger.info("%s: recent", name)
 
-            if name in fs:
-                it = ZODB.FileStorage.FileIterator(fs[name], ptid)
+            if fsname in fs:
+                it = FileIterator(fs[fsname], ptid)
             else:
                 it = storage.iterator(ptid)
 
@@ -164,8 +189,8 @@ def gc_(close, conf, days, ignore, conf2, fs):
                             good.remove(name, oid)
 
         # Now iterate over older records
-        if name in fs:
-            it = ZODB.FileStorage.FileIterator(fs[name], None, ptid)
+        if fsname in fs:
+            it = FileIterator(fs[fsname], None, ptid)
         else:
             it = storage.iterator(None, ptid)
 

@@ -183,7 +183,6 @@ Packing doesn't change it:
 
 Save databases for later:
 
-    >>> import shutil
     >>> for n in range(1, 4):
     ...     shutil.copyfile('%s.fs' % n, '%s.fs-2' %n)
     >>> shutil.copytree('1.blobs', '1.blobs-2')
@@ -248,8 +247,10 @@ Make sure we have no broken refs:
 We can use separate databases for the analysis and update.
 First restore the databases.
 
+    >>> import os
     >>> for n in range(1, 4):
-    ...     shutil.copyfile('%s.fs-2' % n, '%s.fs' %n)
+    ...     shutil.copyfile('%s.fs-2' % n, '%s.fs' % n)
+    ...     os.remove('%s.fs.index' % n)
 
 Make a secondary config:
 
@@ -281,28 +282,33 @@ This time we'll use the command-line interface:
     >>> logging.getLogger().setLevel(logging.INFO)
     >>> logging.getLogger().addHandler(handler)
 
+    >>> import os
+    >>> old_columns = os.environ.get('COLUMNS')
+    >>> os.environ['COLUMNS'] = '70'
     >>> old_prog = sys.argv[0]
-    >>> sys.argv[0] = 'test'
+    >>> sys.argv[0] = 'multi-zodb-gc'
     >>> try: zc.zodbdgc.gc_command([])
     ... except SystemExit: pass
-    Usage: test [options] config1 [config2]
+    Usage: multi-zodb-gc [Options] config1 [config2]
     <BLANKLINE>
     Options:
       -h, --help            show this help message and exit
-      -d DAYS, --days=DAYS  Number of trailing days (defaults to 1) to treat as
-                            non-garbage
+      -d DAYS, --days=DAYS  Number of trailing days (defaults to 1) to
+                            treat as non-garbage
       -f FS, --file-storage=FS
-                            name=path, use the given file storage path for
-                            analysis of the.named database
+                            name=path, use the given file storage path
+                            for analysis of the.named database
       -i IGNORE, --ignore-database=IGNORE
-                            Ignore references to the given database name.
+                            Ignore references to the given database
+                            name.
       -l LEVEL, --log-level=LEVEL
                             The logging level. The default is WARNING.
+      -u UNTRANSFORM, --untransform=UNTRANSFORM
+                            Funciion (module:expr) used to untransform
+                            data records in files identified using the
+                            -file-storage/-f option
 
     >>> bad2 = zc.zodbdgc.gc_command(['-d2', 'config', 'config2'])
-    Ignoring index for 1.fs
-    Ignoring index for 2.fs
-    Ignoring index for 3.fs
     Using secondary configuration, config2, for analysis
     db1: roots
     db1: recent
@@ -416,14 +422,15 @@ and check -l option handling:
     >>> logging.basicConfig = old_basicConfig
     >>> sys.argv[:] = old_argv
 
->>> try: zc.zodbdgc.check_command([])
-... except SystemExit: pass
-Usage: test [options] config
-<BLANKLINE>
-Options:
-  -h, --help            show this help message and exit
-  -r REFDB, --references-filestorage=REFDB
-                        The name of a file-storage to save reference info in.
+    >>> try: zc.zodbdgc.check_command([])
+    ... except SystemExit: pass
+    Usage: multi-zodb-gc [Options] config
+    <BLANKLINE>
+    Options:
+      -h, --help            show this help message and exit
+      -r REFDB, --references-filestorage=REFDB
+                            The name of a file-storage to save reference
+                            info in.
 
     >>> zc.zodbdgc.check_command(['config'])
 
@@ -431,12 +438,10 @@ Make sure we can omit days on the command line:
 
     >>> for n in range(1, 4):
     ...     shutil.copyfile('%s.fs' % n, '%s.fs-2' %n)
+    ...     os.remove('%s.fs-2.index' % n)
 
     >>> sorted(zc.zodbdgc.gc_command(['config', 'config2']).iterator())
     Using secondary configuration, config2, for analysis
-    Ignoring index for 1.fs-2
-    Ignoring index for 2.fs-2
-    Ignoring index for 3.fs-2
     db1: roots
     db1: recent
     db2: roots
@@ -479,10 +484,8 @@ Test the check command
 
     >>> for n in range(1, 4):
     ...     shutil.copyfile('%s.fs-save' % n, '%s.fs-2' %n)
+    ...     os.remove('%s.fs-2.index' % n)
     >>> db = ZODB.config.databaseFromFile(open('config2'))
-    Ignoring index for 1.fs-2
-    Ignoring index for 2.fs-2
-    Ignoring index for 3.fs-2
 
     >>> for d in db.databases.values():
     ...     d.pack()
@@ -644,6 +647,8 @@ databases.
 
     >>> os.remove('one.fs')
     >>> os.remove('two.fs')
+    >>> os.remove('one.fs.index')
+    >>> os.remove('two.fs.index')
 
 Using file-storage iterators directly
 -------------------------------------
@@ -667,9 +672,6 @@ files directly:
     ... </zodb>
     ... """)
     >>> db = ZODB.config.databaseFromFile(open('config'))
-    Ignoring index for one.fs
-    Ignoring index for two.fs
-
     >>> conn = db.open()
     >>> conn.get_connection('db2').root.x = C()
     >>> transaction.commit()
@@ -716,3 +718,8 @@ files directly:
     >>> logging.getLogger().removeHandler(handler)
     >>> time.time = time_time
     >>> sys.argv[0] = old_prog
+
+    >>> if old_columns is None:
+    ...     del os.environ['COLUMNS']
+    ... else:
+    ...     os.environ['COLUMNS'] = old_columns

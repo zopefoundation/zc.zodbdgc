@@ -72,10 +72,16 @@ information.
 Change History
 ==============
 
+0.6.0 2010-05-27
+----------------
+
+- Added support for storages with transformed (e.g. compressed) data
+  records.
+
 0.5.0 2009-11-10
 ----------------
 
-- Fixed a bug in the delet throttle that made it delete objects way
+- Fixed a bug in the delay throttle that made it delete objects way
   too slowly.
 
 0.4.0 2009-09-08
