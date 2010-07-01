@@ -160,7 +160,7 @@ More time passes.
 
     >>> now += 1
 
-The number of objecs in the databases now:
+The number of objects in the databases now:
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
     (2217, 5, 4)
@@ -304,7 +304,7 @@ This time we'll use the command-line interface:
       -l LEVEL, --log-level=LEVEL
                             The logging level. The default is WARNING.
       -u UNTRANSFORM, --untransform=UNTRANSFORM
-                            Funciion (module:expr) used to untransform
+                            Function (module:expr) used to untransform
                             data records in files identified using the
                             -file-storage/-f option
 
@@ -498,7 +498,7 @@ Test the check command
     !!! db2 2 ?
     POSKeyError: 0x02
 
-We get a list of missing objects.  We don't get the refering objects.
+We get a list of missing objects.  We don't get the referring objects.
 To get the, we have to use the -r option to specify the name of a
 database to use.
 
@@ -544,7 +544,7 @@ If we see references to databases we haven't heard of, we just report them:
     !!! db2 2 db1 1
     bad db
 
-(Note that we get the refereing object info here because it is redily
+(Note that we get the referring object info here because it is readily
 available at the time the bad reference is detected.)
 
 If a database is configured to not allow cross references, we complain
@@ -653,7 +653,7 @@ databases.
 Using file-storage iterators directly
 -------------------------------------
 
-If the database under analysis is a file-storage, we can access teh
+If the database under analysis is a file-storage, we can access the
 files directly:
 
 

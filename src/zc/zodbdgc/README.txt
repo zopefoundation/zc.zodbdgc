@@ -107,7 +107,7 @@ Change History
   wildly faster to iterate over a file storage than over a ZEO
   connection.  Using this option uses a file iterator rather than
   opening a file storage in read-only mode, which avoids scanning the
-  database to build an index and aviods the memory cost of a
+  database to build an index and avoids the memory cost of a
   file-storage index.
 
 0.2.0 2009-06-15

@@ -65,7 +65,7 @@ First, open a database and create some data:
     ...     conn.root()[i] = conn.root().__class__()
     ...     conn.transaction_manager.commit()
 
-Now, we'll try t make some garbage:
+Now, we'll try to make some garbage:
 
     >>> for i in range(3):
     ...     del conn.root()[i]

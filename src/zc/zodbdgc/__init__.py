@@ -67,7 +67,7 @@ def gc_command(args=None, ptid=None):
         help='The logging level. The default is WARNING.')
     parser.add_option(
         '-u', '--untransform', dest='untransform',
-        help='Funciion (module:expr) used to untransform data records in'
+        help='Function (module:expr) used to untransform data records in'
         ' files identified using the -file-storage/-f option')
 
     options, args = parser.parse_args(args)
