@@ -34,6 +34,8 @@ long_description = (
         '--------\n'
         )
 
+tests_require = ['zope.testing']
+
 setup(
     name = name,
     version = version,
@@ -50,6 +52,9 @@ setup(
     zip_safe = False,
     entry_points=entry_points,
     include_package_data = True,
-    tests_require=['zope.testing'],
+    tests_require=tests_require,
+    extras_require=dict(
+        test=tests_require,
+        ),
     test_suite='zc.zodbdgc.tests.test_suite',
     )
