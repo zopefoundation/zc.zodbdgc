@@ -11,10 +11,6 @@
 # FOR A PARTICULAR PURPOSE.
 #
 ##############################################################################
-"""XXX short summary goes here.
-
-$Id$
-"""
 from zope.testing import setupstack, renormalizing
 import binascii
 import doctest
