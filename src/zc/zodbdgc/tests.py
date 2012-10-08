@@ -18,6 +18,8 @@ import mock
 import re
 import time
 import unittest
+import zc.zodbdgc
+import ZODB.config
 
 def untransform(data):
     if data[:2] == '.h':
@@ -55,7 +57,6 @@ First, open a database and create some data:
     ...   </hexstorage>
     ... </zodb>
     ... ''')
-    >>> import ZODB.config
     >>> db = ZODB.config.databaseFromFile(open('config'))
     >>> conn = db.open()
     >>> for i in range(9):
@@ -95,7 +96,7 @@ Delete some more:
 
 Now GC. We should lose 3 objects:
 
-    >>> import zc.zodbdgc, pprint
+    >>> import pprint
     >>> pprint.pprint(list(zc.zodbdgc.gc_command(
     ...   '-f=data.fs -uzc.zodbdgc.tests:untransform config'
     ...   .split(), ptid).iterator()))
@@ -122,7 +123,7 @@ def stupid_typo_nameerror_not():
     ...     </filestorage>
     ... </zodb>
     ... ''')
-    >>> import ZODB.config, persistent.mapping, time
+    >>> import persistent.mapping, time
     >>> with mock.patch("time.time", return_value=1241458549.614022):
     ...     db = ZODB.config.databaseFromFile(open('config'))
     ...     conn = db.open()
@@ -153,6 +154,33 @@ def stupid_typo_nameerror_not():
     2
     1
     >>> db.close()
+    """
+
+def test_missmatched_configs():
+    """
+    >>> open('config1', 'w').write('''
+    ... <zodb>
+    ...     <filestorage>
+    ...         pack-gc false
+    ...         pack-keep-old false
+    ...         path 1.fs
+    ...     </filestorage>
+    ... </zodb>
+    ... ''')
+    >>> open('config2', 'w').write('''
+    ... <zodb db>
+    ...     <filestorage>
+    ...         pack-gc false
+    ...         pack-keep-old false
+    ...         path 2.fs
+    ...     </filestorage>
+    ... </zodb>
+    ... ''')
+    >>> bad = zc.zodbdgc.gc('config1', conf2='config2')
+    Traceback (most recent call last):
+    ...
+    ValueError: primary and secondary databases don't match.
+
     """
 
 def test_suite():
