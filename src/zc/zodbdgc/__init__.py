@@ -128,7 +128,7 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
     else:
         logger.info("Using secondary configuration, %s, for analysis", conf2)
         db2 = ZODB.config.databaseFromFile(open(conf2))
-        close.append(db1)
+        close.append(db2)
         if set(db1.databases) != set(db2.databases):
             raise ValueError("primary and secondary databases don't match.")
 
@@ -218,6 +218,7 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
                     else:
                         bad.insert(name, oid, record.tid,
                                    getrefs(data, name, ignore))
+
                 else:
                     # deleted record
                     if good.has(name, oid):
@@ -392,7 +393,7 @@ class Bad:
         pos = db.get(oid)
         if pos is not None:
             f.seek(pos)
-            tid = f.read(8)
+            oldtid = f.read(8)
             oldrefs = set(marshal.load(f))
             refs = oldrefs.union(refs)
             tid = max(tid, oldtid)

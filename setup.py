@@ -34,7 +34,7 @@ long_description = (
         '--------\n'
         )
 
-tests_require = ['zope.testing']
+tests_require = ['zope.testing', 'mock']
 
 setup(
     name = name,

@@ -18,6 +18,7 @@ $Id$
 from zope.testing import setupstack, renormalizing
 import binascii
 import doctest
+import mock
 import re
 import time
 import unittest
@@ -110,6 +111,51 @@ Now GC. We should lose 3 objects:
     >>> db.pack()
     >>> len(db.storage)
     7
+    >>> db.close()
+    """
+
+def stupid_typo_nameerror_not():
+    """
+
+    >>> open('config', 'w').write('''
+    ... <zodb db>
+    ...     <filestorage>
+    ...         pack-gc false
+    ...         pack-keep-old false
+    ...         path 1.fs
+    ...     </filestorage>
+    ... </zodb>
+    ... ''')
+    >>> import ZODB.config, persistent.mapping, time
+    >>> with mock.patch("time.time", return_value=1241458549.614022):
+    ...     db = ZODB.config.databaseFromFile(open('config'))
+    ...     conn = db.open()
+    ...     junk = persistent.mapping.PersistentMapping()
+    ...     conn.add(junk)
+    ...     conn.transaction_manager.commit()
+    ...     junk['a'] = 1
+    ...     conn.transaction_manager.commit()
+    ...     junk['a'] = 2
+    ...     conn.transaction_manager.commit()
+    ...     junk['a'] = 3
+    ...     conn.transaction_manager.commit()
+    ...     time.time.return_value += 86400*1.5
+    ...     conn.root.x = 1
+    ...     conn.transaction_manager.commit()
+    ...     db.close()
+    ...     import zc.zodbdgc, time
+    ...     from ZODB.utils import u64
+    ...     bad = zc.zodbdgc.gc('config', days=1)
+    ...     for name, oid in sorted(bad.iterator()):
+    ...         print name, u64(oid)
+    ...     time.time.return_value += 86400*1.5
+    ...     db = ZODB.config.databaseFromFile(open('config'))
+    ...     len(db.storage)
+    ...     db.pack()
+    ...     len(db.storage)
+    db 1
+    2
+    1
     >>> db.close()
     """
 
