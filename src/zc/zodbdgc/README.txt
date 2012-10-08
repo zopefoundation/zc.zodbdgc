@@ -72,6 +72,11 @@ information.
 Change History
 ==============
 
+0.6.1 2012-10-08
+----------------
+
+Fixed: GC could fail it special cases with a NameError.
+
 0.6.0 2010-05-27
 ----------------
 
