@@ -15,3 +15,4 @@ eggs
 *.egg-info
 develop-eggs
 .dir-locals.el
+.tox
