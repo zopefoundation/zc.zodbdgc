@@ -44,6 +44,7 @@ from io import BytesIO
 import logging
 import marshal
 import optparse
+from persistent import TimeStamp
 import struct
 import sys
 import tempfile
@@ -54,7 +55,7 @@ import ZODB.config
 import ZODB.FileStorage
 import ZODB.fsIndex
 import ZODB.POSException
-import ZODB.TimeStamp
+
 
 
 
@@ -161,12 +162,9 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
     storages = sorted((name, d.storage) for (name, d) in databases.items())
 
     if ptid is None:
-        ptid = repr(
-            ZODB.TimeStamp.TimeStamp(
+        ptid = TimeStamp.TimeStamp(
                 *time.gmtime(time.time() - 86400*days)[:6]
-                ))
-        if not isinstance(ptid, bytes):
-            ptid = ptid.encode('ascii')
+                ).raw()
 
     good = oidset(databases)
     bad = Bad(databases)

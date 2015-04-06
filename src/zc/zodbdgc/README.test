@@ -216,8 +216,6 @@ Now let's perform gc.
     db1 2214
     db1 2215
     db2 1
-    db2 3
-    db2 4
     db3 1
     db3 2
 
@@ -238,7 +236,7 @@ haven't packed yet.
     ...     d.pack()
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (2205, 2, 2)
+    (2205, 4, 2)
 
     >>> import ZODB.POSException
     >>> for name, oid in bad.iterator():
@@ -331,7 +329,7 @@ This time we'll use the command-line interface:
     db1: remove garbage
     Removed 12 objects from db1
     db2: remove garbage
-    Removed 3 objects from db2
+    Removed 1 objects from db2
     db3: remove garbage
     Removed 2 objects from db3
 
@@ -364,7 +362,7 @@ We can gc again, even with deleted records:
     ...     d.pack()
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (2205, 2, 2)
+    (2205, 4, 2)
 
     >>> _ = [d.close() for d in db.databases.values()]
 
@@ -470,7 +468,7 @@ Make sure we can omit days on the command line:
 
 Try with 0 days:
 
-    >>> sorted((name, long(u64(oid))) for (name, oid) in
+    >>> sorted((name, int(u64(oid))) for (name, oid) in
     ...        zc.zodbdgc.gc_command(['-d0', 'config', 'config2']).iterator())
     Using secondary configuration, config2, for analysis
     db1: roots
@@ -479,10 +477,10 @@ Try with 0 days:
     db1: remove garbage
     Removed 0 objects from db1
     db2: remove garbage
-    Removed 0 objects from db2
+    Removed 2 objects from db2
     db3: remove garbage
     Removed 0 objects from db3
-    []
+    [('db2', 3), ('db2', 4)]
 
 Test the check command
 ----------------------
