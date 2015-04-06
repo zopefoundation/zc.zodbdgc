@@ -158,7 +158,7 @@ Save databases for later:
 
 More time passes.
 
-    >>> now += 1
+    >>> now += 1 * 86400
 
 The number of objects in the databases now:
 
@@ -208,6 +208,8 @@ Now let's perform gc.
     db1 2214
     db1 2215
     db2 1
+    db2 3
+    db2 4
     db3 1
     db3 2
 
@@ -228,7 +230,7 @@ haven't packed yet.
     ...     d.pack()
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (2205, 4, 2)
+    (2205, 2, 2)
 
     >>> import ZODB.POSException
     >>> for name, oid in bad.iterator():
@@ -319,7 +321,7 @@ This time we'll use the command-line interface:
     db1: remove garbage
     Removed 12 objects from db1
     db2: remove garbage
-    Removed 1 objects from db2
+    Removed 3 objects from db2
     db3: remove garbage
     Removed 2 objects from db3
 
@@ -352,7 +354,7 @@ We can gc again, even with deleted records:
     ...     d.pack()
 
     >>> len(conn1._storage), len(conn2._storage), len(conn3._storage)
-    (2205, 4, 2)
+    (2205, 2, 2)
 
     >>> _ = [d.close() for d in db.databases.values()]
 
@@ -467,10 +469,10 @@ Try with 0 days:
     db1: remove garbage
     Removed 0 objects from db1
     db2: remove garbage
-    Removed 2 objects from db2
+    Removed 0 objects from db2
     db3: remove garbage
     Removed 0 objects from db3
-    [('db2', 3L), ('db2', 4L)]
+    []
 
 Test the check command
 ----------------------
@@ -492,9 +494,9 @@ Test the check command
     >>> for d in db.databases.values():
     ...     d.close()
 
-    >>> zc.zodbdgc.check_command(['config2'])
+    >>> zc.zodbdgc.check_command(['config2']) #doctest: +ELLIPSIS
     !!! db1 2216 ?
-    POSKeyError: 'No blob file'
+    POSKeyError: ...No blob file at ...
     !!! db2 2 ?
     POSKeyError: 0x02
 
@@ -502,9 +504,9 @@ We get a list of missing objects.  We don't get the referring objects.
 To get the, we have to use the -r option to specify the name of a
 database to use.
 
-    >>> zc.zodbdgc.check_command(['-rrefs.fs', 'config2'])
+    >>> zc.zodbdgc.check_command(['-rrefs.fs', 'config2']) #doctest: +ELLIPSIS
     !!! db1 2216 db1 0
-    POSKeyError: 'No blob file'
+    POSKeyError: ...No blob file...
     !!! db2 2 db1 1
     POSKeyError: 0x02
 
@@ -538,9 +540,9 @@ If we see references to databases we haven't heard of, we just report them:
     ... </zodb>
     ... """)
 
-    >>> zc.zodbdgc.check_command(['config2'])
+    >>> zc.zodbdgc.check_command(['config2']) #doctest: +ELLIPSIS
     !!! db1 2216 ?
-    POSKeyError: 'No blob file'
+    POSKeyError: ...No blob file...
     !!! db2 2 db1 1
     bad db
 
@@ -572,9 +574,9 @@ about cross references that we see:
     ... </zodb>
     ... """)
 
-    >>> zc.zodbdgc.check_command(['config2'])
+    >>> zc.zodbdgc.check_command(['config2']) #doctest: +ELLIPSIS
     !!! db1 2216 ?
-    POSKeyError: 'No blob file'
+    POSKeyError: ...No blob file...
     bad xref db2 2 db1 1
     !!! db2 2 ?
     POSKeyError: 0x02
