@@ -12,7 +12,7 @@
 #
 ##############################################################################
 
-name, version = 'zc.zodbdgc', '0'
+name, version = 'zc.zodbdgc', '0.6.2.dev0'
 
 import os
 import platform
@@ -63,7 +63,7 @@ setup(
     long_description=long_description,
     license = 'ZPL 2.1',
 
-    packages = find_packages('src'),
+    packages = ['zc', 'zc.zodbdgc'],
     namespace_packages = ['zc'],
     package_dir = {'': 'src'},
     install_requires=install_requires,
@@ -83,6 +83,9 @@ setup(
         "Programming Language :: Python :: 2",
         "Programming Language :: Python :: 2.6",
         "Programming Language :: Python :: 2.7",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.4",
         "Programming Language :: Python :: Implementation :: CPython",
+        "Programming Language :: Python :: Implementation :: PyPy",
     ],
     )
