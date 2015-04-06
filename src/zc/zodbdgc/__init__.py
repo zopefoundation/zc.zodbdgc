@@ -16,7 +16,21 @@ from ZODB.utils import z64
 import BTrees.fsBTree
 import BTrees.OOBTree
 import BTrees.LLBTree
-import cPickle
+try:
+    import zodbpickle
+except ImportError:
+    import cPickle
+else:
+    # We're on a platform where we needed zodbpickle
+    # because of a broken/missing noload.
+    # (or the user just happened to have it installed)
+    # In that case, use the fastest version we can have access
+    # to (PyPy doesn't have fastpickle)
+    try:
+        from zodbpickle import fastpickle as cPickle
+    except ImportError:
+        from zodbpickle import pickle as cPickle
+
 import cStringIO
 import logging
 import marshal
