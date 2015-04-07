@@ -471,7 +471,9 @@ def _insert_ref(references, rname, roid, name, oid):
         # Setting _p_changed is needed when using older versions of
         # the pure-python BTree package (e.g., under PyPy). This is
         # a bug documented at https://github.com/zopefoundation/BTrees/pull/11.
-        # Without it, the References example in README.test fails.
+        # Without it, the References example in README.test fails
+        # with a KeyError: the 'db2' key is not found because it wasn't
+        # persisted to disk.
         references._p_changed = True
     by_rname = by_oid.get(oid)
     if not by_rname:
