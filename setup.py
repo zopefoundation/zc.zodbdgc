@@ -38,11 +38,12 @@ long_description = (
 
 tests_require = ['zope.testing', 'mock']
 install_requires = [
-    "ZODB",
-    "persistent",
+    "BTrees >= 4.0.0",
+    "ZODB >= 4.0.0",
+    "persistent >= 4.0.0",
+    "setuptools",
     "transaction",
-    "BTrees",
-    "setuptools"]
+    ]
 
 # PyPy and Py3K don't have cPickle's `noload`, and `noload` is broken in CPython >= 2.7
 py_impl = getattr(platform, 'python_implementation', lambda: None)
@@ -84,6 +85,8 @@ setup(
         "Programming Language :: Python :: 2.6",
         "Programming Language :: Python :: 2.7",
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.2",
+        "Programming Language :: Python :: 3.3",
         "Programming Language :: Python :: 3.4",
         "Programming Language :: Python :: Implementation :: CPython",
         "Programming Language :: Python :: Implementation :: PyPy",
