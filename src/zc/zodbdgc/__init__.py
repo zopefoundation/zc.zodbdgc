@@ -601,7 +601,7 @@ class References(object):
 
     def __getitem__(self, arg):
         name, oid = arg
-        if isinstance(oid, (str,bytes)):
+        if isinstance(oid, (str, bytes)):
             oid = u64(oid)
         by_rname = self._refs[name][oid]
         if isinstance(by_rname, dict):

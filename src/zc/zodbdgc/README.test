@@ -102,13 +102,13 @@ cross db loops
 No garbage yet, because everything's reachable.
 
     >>> from ZODB.utils import u64, p64
-    >>> print( u64(conn1.root.a._p_oid) )
+    >>> print(u64(conn1.root.a._p_oid))
     2204
-    >>> print( u64(conn1.root.b._p_oid) )
+    >>> print(u64(conn1.root.b._p_oid))
     2205
-    >>> print( u64(conn2.root.x._p_oid) )
+    >>> print(u64(conn2.root.x._p_oid))
     1
-    >>> print( u64(conn3.root.x._p_oid) )
+    >>> print(u64(conn3.root.x._p_oid))
     2
     >>> del conn1.root.a
     >>> del conn1.root.b
@@ -143,9 +143,9 @@ We'll create some more garbage:
 
     >>> transaction.commit()
 
-    >>> print( u64(conn2.root.a._p_oid) )
+    >>> print(u64(conn2.root.a._p_oid))
     3
-    >>> print( u64(conn2.root.b._p_oid) )
+    >>> print(u64(conn2.root.b._p_oid))
     4
     >>> del conn2.root.a
     >>> del conn2.root.b
@@ -202,7 +202,7 @@ Now let's perform gc.
     >>> bad = zc.zodbdgc.gc('config', days=2)
 
     >>> for name, oid in sorted(bad.iterator()):
-    ...     print( "{0} {1}".format( name, u64(oid)) )
+    ...     print("{0} {1}".format( name, u64(oid)))
     db1 2204
     db1 2205
     db1 2206
@@ -245,7 +245,7 @@ haven't packed yet.
     ...     except ZODB.POSException.POSKeyError:
     ...         pass
     ...     else:
-    ...         print( 'waaa', name, u64(oid) )
+    ...         print('waaa', name, u64(oid))
 
 Make sure we have no broken refs:
 
