@@ -470,7 +470,7 @@ def _insert_ref(references, rname, roid, name, oid):
         by_oid = references[name] = BTrees.LOBTree.BTree()
         # XXX: Setting _p_changed is needed when using the pure-python
         # BTree package (e.g., under PyPy). This is probably a bug in
-        # BTree (LOBTreePy)? Without it, the References example in README.test
+        # BTree (OOBTreePy)? Without it, the References example in README.test
         # fails.
         references._p_changed = True
     by_rname = by_oid.get(oid)
