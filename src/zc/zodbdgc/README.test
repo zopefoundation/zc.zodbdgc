@@ -20,8 +20,8 @@ We'll need to control time.
 
 Let's define some storages::
 
-    >>> f = open('config', 'w')
-    >>> _ = f.write("""
+    >>> with open('config', 'w') as f:
+    ...     _ = f.write("""
     ... <zodb db1>
     ...     <filestorage>
     ...         pack-gc false
@@ -45,10 +45,11 @@ Let's define some storages::
     ...     </filestorage>
     ... </zodb>
     ... """)
-    >>> f.close()
+
 
     >>> import ZODB.blob, ZODB.config, transaction
-    >>> db = ZODB.config.databaseFromFile(open('config'))
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
 
 And perform some updates:
 
@@ -219,7 +220,8 @@ Now let's perform gc.
     db3 1
     db3 2
 
-    >>> db = ZODB.config.databaseFromFile(open('config'))
+    >>> with open('config', 'r') as f:
+    ...    db = ZODB.config.databaseFromFile(f)
     >>> conn1 = db.open()
     >>> conn2 = conn1.get_connection('db2')
     >>> conn3 = conn1.get_connection('db3')
@@ -262,8 +264,8 @@ First restore the databases.
 
 Make a secondary config:
 
-    >>> f = open('config2', 'w')
-    >>> _ = f.write("""
+    >>> with open('config2', 'w') as f:
+    ...     _ = f.write("""
     ... <zodb db1>
     ...     <filestorage>
     ...         path 1.fs-2
@@ -281,7 +283,6 @@ Make a secondary config:
     ...     </filestorage>
     ... </zodb>
     ... """)
-    >>> f.close()
 
 
 This time we'll use the command-line interface:
@@ -353,7 +354,8 @@ We can gc again, even with deleted records:
     Removed 0 objects from db3
     []
 
-    >>> db = ZODB.config.databaseFromFile(open('config'))
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
     >>> conn1 = db.open()
     >>> conn2 = conn1.get_connection('db2')
     >>> conn3 = conn1.get_connection('db3')
@@ -495,7 +497,8 @@ Test the check command
     >>> for n in range(1, 4):
     ...     _ = shutil.copyfile('%s.fs-save' % n, '%s.fs-2' %n)
     ...     os.remove('%s.fs-2.index' % n)
-    >>> db = ZODB.config.databaseFromFile(open('config2'))
+    >>> with open('config2', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
 
     >>> for d in db.databases.values():
     ...     d.pack()
@@ -541,8 +544,8 @@ incorrectly removed as garbage.
 
 If we see references to databases we haven't heard of, we just report them:
 
-    >>> f = open('config2', 'w')
-    >>> _ = f.write("""
+    >>> with open('config2', 'w') as f:
+    ...    _ = f.write("""
     ... <zodb db1>
     ...     <filestorage>
     ...         path 1.fs-2
@@ -550,7 +553,6 @@ If we see references to databases we haven't heard of, we just report them:
     ...     </filestorage>
     ... </zodb>
     ... """)
-    >>> f.close()
 
     >>> zc.zodbdgc.check_command(['config2']) #doctest: +ELLIPSIS
     !!! db1 2216 ?
@@ -564,8 +566,8 @@ available at the time the bad reference is detected.)
 If a database is configured to not allow cross references, we complain
 about cross references that we see:
 
-    >>> f = open('config2', 'w')
-    >>> _ = f.write("""
+    >>> with open('config2', 'w') as f:
+    ...     _ = f.write("""
     ... <zodb db1>
     ...     allow-implicit-cross-references false
     ...     <filestorage>
@@ -586,7 +588,6 @@ about cross references that we see:
     ...     </filestorage>
     ... </zodb>
     ... """)
-    >>> f.close()
 
     >>> zc.zodbdgc.check_command(['config2']) #doctest: +ELLIPSIS
     !!! db1 2216 ?
@@ -639,15 +640,14 @@ databases.
 
     >>> _ = [db.close() for db in db.databases.values()]
 
-    >>> f = open('config', 'w')
-    >>> _ = f.write("""
+    >>> with open('config', 'w') as f:
+    ...     _ = f.write("""
     ... <zodb db1>
     ...     <filestorage>
     ...         path one.fs
     ...     </filestorage>
     ... </zodb>
     ... """)
-    >>> f.close()
 
     >>> sorted(zc.zodbdgc.gc_command(['config']).iterator())
     Traceback (most recent call last):
@@ -675,8 +675,8 @@ If the database under analysis is a file-storage, we can access the
 files directly:
 
 
-    >>> f = open('config', 'w')
-    >>> _ = f.write("""
+    >>> with open('config', 'w') as f:
+    ...     _ = f.write("""
     ... <zodb db1>
     ...     <filestorage>
     ...         path one.fs
@@ -690,8 +690,8 @@ files directly:
     ...     </filestorage>
     ... </zodb>
     ... """)
-    >>> f.close()
-    >>> db = ZODB.config.databaseFromFile(open('config'))
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
     >>> conn = db.open()
     >>> conn.get_connection('db2').root.x = C()
     >>> transaction.commit()

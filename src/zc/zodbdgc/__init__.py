@@ -37,7 +37,7 @@ else:
     # under PyPy and hence have broken functions at `ZODB.serialize.referencesf`
     # and `ZODB.serialize.get_refs`. Check for that and patch it.
     import ZODB.serialize
-    if not hasattr(ZODB.serialize.Unpickler, 'noload'):
+    if hasattr(ZODB.serialize, 'Unpickler') and not hasattr(ZODB.serialize.Unpickler, 'noload'):
         ZODB.serialize.Unpickler = cPickle.Unpickler
 
 from io import BytesIO
@@ -130,9 +130,12 @@ def gc(conf, days=1, ignore=(), conf2=None, fs=(), untransform=None, ptid=None):
     try:
         return gc_(close, conf, days, ignore, conf2, fs, untransform, ptid)
     finally:
-        for db in close:
-            for db in db.databases.values():
-                db.close()
+        for thing in close:
+            if hasattr(thing, 'databases'):
+                for db in thing.databases.values():
+                    db.close()
+            elif hasattr(thing, 'close'):
+                thing.close()
 
 def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
     FileIterator = ZODB.FileStorage.FileIterator
@@ -143,8 +146,12 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
                     if record.data:
                         record.data = untransform(record.data)
                     yield record
-            for t in ZODB.FileStorage.FileIterator(*args):
-                yield transit(t)
+            zfsit = ZODB.FileStorage.FileIterator(*args)
+            try:
+                for t in zfsit:
+                    yield transit(t)
+            finally:
+                zfsit.close()
 
     with open(conf) as f:
         db1 = ZODB.config.databaseFromFile(f)
@@ -153,7 +160,8 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
         db2 = db1
     else:
         logger.info("Using secondary configuration, %s, for analysis", conf2)
-        db2 = ZODB.config.databaseFromFile(open(conf2))
+        with open(conf2) as f:
+            db2 = ZODB.config.databaseFromFile(f)
         close.append(db2)
         if set(db1.databases) != set(db2.databases):
             raise ValueError("primary and secondary databases don't match.")
@@ -168,6 +176,13 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
 
     good = oidset(databases)
     bad = Bad(databases)
+    # XXX: Closing Bad breaks the Bad.iterator(name) method
+    # However, that method is not documented or tested.
+    # Can it be removed or made optional? (If it's removed/optional
+    # it can speed up GC because it avoids file writes.)
+    # OTOH, not closing Bad yields ResourceWarnings under Py3
+    # and (temporarily?) leaks files under PyPy/Jython.
+    #close.append(bad)
     deleted = oidset(databases)
 
     for name, storage in storages:
@@ -188,6 +203,9 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
                 it = FileIterator(fs[fsname], ptid)
             else:
                 it = storage.iterator(ptid)
+            # We need to be sure to always close iterators
+            # in case we raise an exception
+            close.append(it)
 
             for trans in it:
                 for record in trans:
@@ -218,6 +236,9 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
             it = FileIterator(fs[fsname], None, ptid)
         else:
             it = storage.iterator(None, ptid)
+        # We need to be sure to always close iterators
+        # in case we raise an exception
+        close.append(it)
 
         for trans in it:
             for record in trans:
@@ -255,7 +276,7 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
     if conf2 is not None:
         for db in db2.databases.values():
             db.close()
-        close.pop()
+        close.remove(db2)
 
     # Now, we have the garbage in bad.  Remove it.
     batch_size = 100
@@ -378,7 +399,7 @@ class oidset(dict):
                 for suffix in data:
                     yield prefix+suffix
 
-class Bad:
+class Bad(object):
 
     def __init__(self, names):
         self._file = tempfile.TemporaryFile(dir='.', prefix='gcbad')
@@ -396,6 +417,7 @@ class Bad:
     def __nonzero__(self):
         raise SystemError('wtf')
         return sum(map(bool, self._dbs.values()))
+    __bool__ = __nonzero__
 
     def has(self, name, oid):
         db = self._dbs[name]

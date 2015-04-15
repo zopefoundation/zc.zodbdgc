@@ -59,7 +59,9 @@ First, open a database and create some data:
     ... </zodb>
     ... ''')
     >>> f.close()
-    >>> db = ZODB.config.databaseFromFile(open('config'))
+
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
     >>> conn = db.open()
     >>> for i in range(9):
     ...     conn.root()[i] = conn.root().__class__()
@@ -106,7 +108,8 @@ Now GC. We should lose 3 objects:
      ('', ...'\x00\x00\x00\x00\x00\x00\x00\x02'),
      ('', ...'\x00\x00\x00\x00\x00\x00\x00\x03')]
 
-    >>> db = ZODB.config.databaseFromFile(open('config'))
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
     >>> db.pack()
     >>> len(db.storage)
     7
@@ -129,7 +132,8 @@ def stupid_typo_nameerror_not():
     >>> f.close()
     >>> import persistent.mapping, time
     >>> with mock.patch("time.time", return_value=1241458549.614022):
-    ...     db = ZODB.config.databaseFromFile(open('config'))
+    ...     with open('config') as f:
+    ...          db = ZODB.config.databaseFromFile(f)
     ...     conn = db.open()
     ...     junk = persistent.mapping.PersistentMapping()
     ...     conn.add(junk)
@@ -150,7 +154,8 @@ def stupid_typo_nameerror_not():
     ...     for name, oid in sorted(bad.iterator()):
     ...         print( "{0} {1}".format(name, u64(oid)) )
     ...     time.time.return_value += 86400*1.5
-    ...     db = ZODB.config.databaseFromFile(open('config'))
+    ...     with open('config', 'r') as f:
+    ...         db = ZODB.config.databaseFromFile(f)
     ...     len(db.storage)
     ...     db.pack()
     ...     len(db.storage)
