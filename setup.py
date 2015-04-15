@@ -45,13 +45,14 @@ install_requires = [
     "transaction",
     ]
 
-# PyPy and Py3K don't have cPickle's `noload`, and `noload` is broken in CPython >= 2.7
+# PyPy, Jython, and Py3K don't have cPickle's `noload`, and `noload` is broken in CPython >= 2.7
 py_impl = getattr(platform, 'python_implementation', lambda: None)
 is_pypy = py_impl() == 'PyPy'
+is_jython = py_impl() == 'Jython'
 py3k = sys.version_info >= (3, )
 py27 = sys.version_info >= (2, 7)
 
-if is_pypy or py27 or py3k:
+if is_pypy or is_jython or py27 or py3k:
     install_requires.append('zodbpickle')
 
 
