@@ -72,6 +72,12 @@ information.
 Change History
 ==============
 
+0.6.2 (unreleased)
+----------------
+
+- Add support for PyPy, Python 2.7, and Python 3.
+
+
 0.6.1 2012-10-08
 ----------------
 

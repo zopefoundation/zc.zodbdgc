@@ -20,7 +20,8 @@ We'll need to control time.
 
 Let's define some storages::
 
-    >>> open('config', 'w').write("""
+    >>> with open('config', 'w') as f:
+    ...     _ = f.write("""
     ... <zodb db1>
     ...     <filestorage>
     ...         pack-gc false
@@ -45,8 +46,10 @@ Let's define some storages::
     ... </zodb>
     ... """)
 
+
     >>> import ZODB.blob, ZODB.config, transaction
-    >>> db = ZODB.config.databaseFromFile(open('config'))
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
 
 And perform some updates:
 
@@ -100,10 +103,14 @@ cross db loops
 No garbage yet, because everything's reachable.
 
     >>> from ZODB.utils import u64, p64
-    >>> print u64(conn1.root.a._p_oid), u64(conn1.root.b._p_oid)
-    2204 2205
-    >>> print u64(conn2.root.x._p_oid), u64(conn3.root.x._p_oid)
-    1 2
+    >>> print(u64(conn1.root.a._p_oid))
+    2204
+    >>> print(u64(conn1.root.b._p_oid))
+    2205
+    >>> print(u64(conn2.root.x._p_oid))
+    1
+    >>> print(u64(conn3.root.x._p_oid))
+    2
     >>> del conn1.root.a
     >>> del conn1.root.b
     >>> del conn2.root.x
@@ -137,15 +144,17 @@ We'll create some more garbage:
 
     >>> transaction.commit()
 
-    >>> print u64(conn2.root.a._p_oid), u64(conn2.root.b._p_oid)
-    3 4
+    >>> print(u64(conn2.root.a._p_oid))
+    3
+    >>> print(u64(conn2.root.b._p_oid))
+    4
     >>> del conn2.root.a
     >>> del conn2.root.b
     >>> transaction.commit()
 
 Let's add a blob.  We'll use it later:
 
-    >>> conn1.root.blob = ZODB.blob.Blob('some data')
+    >>> conn1.root.blob = ZODB.blob.Blob(b'some data')
     >>> transaction.commit()
     >>> blob_path = conn1.root.blob.committed()
 
@@ -154,7 +163,7 @@ Save databases for later:
 
     >>> import shutil
     >>> for n in range(1, 4):
-    ...     shutil.copyfile('%s.fs' % n, '%s.fs-save' %n)
+    ...     _ = shutil.copyfile('%s.fs' % n, '%s.fs-save' %n)
 
 More time passes.
 
@@ -184,8 +193,8 @@ Packing doesn't change it:
 Save databases for later:
 
     >>> for n in range(1, 4):
-    ...     shutil.copyfile('%s.fs' % n, '%s.fs-2' %n)
-    >>> shutil.copytree('1.blobs', '1.blobs-2')
+    ...     _ = shutil.copyfile('%s.fs' % n, '%s.fs-2' %n)
+    >>> _ = shutil.copytree('1.blobs', '1.blobs-2')
     >>> shutil.copymode('1.blobs', '1.blobs-2')
 
 Now let's perform gc.
@@ -194,7 +203,7 @@ Now let's perform gc.
     >>> bad = zc.zodbdgc.gc('config', days=2)
 
     >>> for name, oid in sorted(bad.iterator()):
-    ...     print name, u64(oid)
+    ...     print("{0} {1}".format( name, u64(oid)))
     db1 2204
     db1 2205
     db1 2206
@@ -211,7 +220,8 @@ Now let's perform gc.
     db3 1
     db3 2
 
-    >>> db = ZODB.config.databaseFromFile(open('config'))
+    >>> with open('config', 'r') as f:
+    ...    db = ZODB.config.databaseFromFile(f)
     >>> conn1 = db.open()
     >>> conn2 = conn1.get_connection('db2')
     >>> conn3 = conn1.get_connection('db3')
@@ -237,7 +247,7 @@ haven't packed yet.
     ...     except ZODB.POSException.POSKeyError:
     ...         pass
     ...     else:
-    ...         print 'waaa', name, u64(oid)
+    ...         print('waaa', name, u64(oid))
 
 Make sure we have no broken refs:
 
@@ -249,12 +259,13 @@ First restore the databases.
 
     >>> import os
     >>> for n in range(1, 4):
-    ...     shutil.copyfile('%s.fs-2' % n, '%s.fs' % n)
+    ...     _ = shutil.copyfile('%s.fs-2' % n, '%s.fs' % n)
     ...     os.remove('%s.fs.index' % n)
 
 Make a secondary config:
 
-    >>> open('config2', 'w').write("""
+    >>> with open('config2', 'w') as f:
+    ...     _ = f.write("""
     ... <zodb db1>
     ...     <filestorage>
     ...         path 1.fs-2
@@ -343,7 +354,8 @@ We can gc again, even with deleted records:
     Removed 0 objects from db3
     []
 
-    >>> db = ZODB.config.databaseFromFile(open('config'))
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
     >>> conn1 = db.open()
     >>> conn2 = conn1.get_connection('db2')
     >>> conn3 = conn1.get_connection('db3')
@@ -362,7 +374,7 @@ logging:
     >>> old_argv = sys.argv[:]
     >>> old_basicConfig = logging.basicConfig
     >>> def faux_basicConfig(level=None, format=None):
-    ...     print 'basicConfig', (), dict(level=level)
+    ...     print('basicConfig () {0}'.format(dict(level=level)))
     >>> logging.basicConfig = faux_basicConfig
 
     >>> sys.argv[:] = ['-d2', 'config']
@@ -437,7 +449,7 @@ and check -l option handling:
 Make sure we can omit days on the command line:
 
     >>> for n in range(1, 4):
-    ...     shutil.copyfile('%s.fs' % n, '%s.fs-2' %n)
+    ...     _ = shutil.copyfile('%s.fs' % n, '%s.fs-2' %n)
     ...     os.remove('%s.fs-2.index' % n)
 
     >>> sorted(zc.zodbdgc.gc_command(['config', 'config2']).iterator())
@@ -458,7 +470,7 @@ Make sure we can omit days on the command line:
 
 Try with 0 days:
 
-    >>> sorted((name, long(u64(oid))) for (name, oid) in
+    >>> sorted((name, int(u64(oid))) for (name, oid) in
     ...        zc.zodbdgc.gc_command(['-d0', 'config', 'config2']).iterator())
     Using secondary configuration, config2, for analysis
     db1: roots
@@ -470,7 +482,7 @@ Try with 0 days:
     Removed 2 objects from db2
     db3: remove garbage
     Removed 0 objects from db3
-    [('db2', 3L), ('db2', 4L)]
+    [('db2', 3), ('db2', 4)]
 
 Test the check command
 ----------------------
@@ -483,18 +495,19 @@ Test the check command
     >>> os.remove(blob_path.replace('1.blobs', '1.blobs-2'))
 
     >>> for n in range(1, 4):
-    ...     shutil.copyfile('%s.fs-save' % n, '%s.fs-2' %n)
+    ...     _ = shutil.copyfile('%s.fs-save' % n, '%s.fs-2' %n)
     ...     os.remove('%s.fs-2.index' % n)
-    >>> db = ZODB.config.databaseFromFile(open('config2'))
+    >>> with open('config2', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
 
     >>> for d in db.databases.values():
     ...     d.pack()
     >>> for d in db.databases.values():
     ...     d.close()
 
-    >>> zc.zodbdgc.check_command(['config2'])
+    >>> zc.zodbdgc.check_command(['config2']) #doctest: +ELLIPSIS
     !!! db1 2216 ?
-    POSKeyError: 'No blob file'
+    POSKeyError: ...No blob file at ...
     !!! db2 2 ?
     POSKeyError: 0x02
 
@@ -502,9 +515,9 @@ We get a list of missing objects.  We don't get the referring objects.
 To get the, we have to use the -r option to specify the name of a
 database to use.
 
-    >>> zc.zodbdgc.check_command(['-rrefs.fs', 'config2'])
+    >>> zc.zodbdgc.check_command(['-rrefs.fs', 'config2']) #doctest: +ELLIPSIS
     !!! db1 2216 db1 0
-    POSKeyError: 'No blob file'
+    POSKeyError: ...No blob file...
     !!! db2 2 db1 1
     POSKeyError: 0x02
 
@@ -515,10 +528,12 @@ query about any references:
     >>> refs = zc.zodbdgc.References('refs.fs')
     >>> list(refs['db2', 2])
     [('db1', 1)]
-    >>> list(refs['db2', '\0'*7+'\2'])
+    >>> list(refs['db2', b'\0'*7+b'\2'])
     [('db1', 1)]
     >>> list(refs['db1', 1])
     [('db1', 0)]
+    >>> transaction.abort()
+    >>> refs.close()
 
 
 
@@ -529,7 +544,8 @@ incorrectly removed as garbage.
 
 If we see references to databases we haven't heard of, we just report them:
 
-    >>> open('config2', 'w').write("""
+    >>> with open('config2', 'w') as f:
+    ...    _ = f.write("""
     ... <zodb db1>
     ...     <filestorage>
     ...         path 1.fs-2
@@ -538,9 +554,9 @@ If we see references to databases we haven't heard of, we just report them:
     ... </zodb>
     ... """)
 
-    >>> zc.zodbdgc.check_command(['config2'])
+    >>> zc.zodbdgc.check_command(['config2']) #doctest: +ELLIPSIS
     !!! db1 2216 ?
-    POSKeyError: 'No blob file'
+    POSKeyError: ...No blob file...
     !!! db2 2 db1 1
     bad db
 
@@ -550,7 +566,8 @@ available at the time the bad reference is detected.)
 If a database is configured to not allow cross references, we complain
 about cross references that we see:
 
-    >>> open('config2', 'w').write("""
+    >>> with open('config2', 'w') as f:
+    ...     _ = f.write("""
     ... <zodb db1>
     ...     allow-implicit-cross-references false
     ...     <filestorage>
@@ -572,9 +589,9 @@ about cross references that we see:
     ... </zodb>
     ... """)
 
-    >>> zc.zodbdgc.check_command(['config2'])
+    >>> zc.zodbdgc.check_command(['config2']) #doctest: +ELLIPSIS
     !!! db1 2216 ?
-    POSKeyError: 'No blob file'
+    POSKeyError: ...No blob file...
     bad xref db2 2 db1 1
     !!! db2 2 ?
     POSKeyError: 0x02
@@ -621,9 +638,10 @@ databases.
 
     >>> db.pack()
 
-    >>> _ = [db.close() for db in db.databases.itervalues()]
+    >>> _ = [db.close() for db in db.databases.values()]
 
-    >>> open('config', 'w').write("""
+    >>> with open('config', 'w') as f:
+    ...     _ = f.write("""
     ... <zodb db1>
     ...     <filestorage>
     ...         path one.fs
@@ -637,13 +655,13 @@ databases.
     KeyError: 'db2'
 
     >>> sorted(zc.zodbdgc.gc_command(['-idb2', 'config']).iterator())
-    ... # doctest: +NORMALIZE_WHITESPACE
+    ... # doctest: +NORMALIZE_WHITESPACE, +ELLIPSIS
     db1: roots
     db1: recent
     db1: remove garbage
     Removed 2 objects from db1
-    [('db1', '\x00\x00\x00\x00\x00\x00\x00\x02'),
-     ('db1', '\x00\x00\x00\x00\x00\x00\x00\x03')]
+    [('db1', ...'\x00\x00\x00\x00\x00\x00\x00\x02'),
+     ('db1', ...'\x00\x00\x00\x00\x00\x00\x00\x03')]
 
     >>> os.remove('one.fs')
     >>> os.remove('two.fs')
@@ -657,7 +675,8 @@ If the database under analysis is a file-storage, we can access the
 files directly:
 
 
-    >>> open('config', 'w').write("""
+    >>> with open('config', 'w') as f:
+    ...     _ = f.write("""
     ... <zodb db1>
     ...     <filestorage>
     ...         path one.fs
@@ -671,7 +690,8 @@ files directly:
     ...     </filestorage>
     ... </zodb>
     ... """)
-    >>> db = ZODB.config.databaseFromFile(open('config'))
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
     >>> conn = db.open()
     >>> conn.get_connection('db2').root.x = C()
     >>> transaction.commit()
@@ -692,12 +712,12 @@ files directly:
 
     >>> db.pack()
 
-    >>> _ = [db.close() for db in db.databases.itervalues()]
+    >>> _ = [db.close() for db in db.databases.values()]
 
 
     >>> sorted(zc.zodbdgc.gc_command(['-fdb1=one.fs', '-fdb2=two.fs', 'config']
     ... ).iterator())
-    ... # doctest: +NORMALIZE_WHITESPACE
+    ... # doctest: +NORMALIZE_WHITESPACE,+ELLIPSIS
     db1: roots
     db1: recent
     db2: roots
@@ -706,8 +726,8 @@ files directly:
     Removed 2 objects from db1
     db2: remove garbage
     Removed 0 objects from db2
-    [('db1', '\x00\x00\x00\x00\x00\x00\x00\x02'),
-     ('db1', '\x00\x00\x00\x00\x00\x00\x00\x03')]
+    [('db1', ...'\x00\x00\x00\x00\x00\x00\x00\x02'),
+     ('db1', ...'\x00\x00\x00\x00\x00\x00\x00\x03')]
 
     >>> os.remove('one.fs')
     >>> os.remove('two.fs')

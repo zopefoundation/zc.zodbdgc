@@ -92,84 +92,84 @@ name/oid pairs efficiently.
     >>> import pprint
 
     >>> pprint.pprint(
-    ...     sorted((name, long(u64(oid))) for (name, oid) in oids.iterator()),
+    ...     sorted((name, int(u64(oid))) for (name, oid) in oids.iterator()),
     ...     width=1)
     [('foo',
-      0L),
+      0),
      ('foo',
-      2147483647L),
+      2147483647),
      ('foo',
-      2147483648L),
+      2147483648),
      ('foo',
-      2147483649L),
+      2147483649),
      ('foo',
-      4294967296L),
+      4294967296),
      ('foo',
-      17179869184L),
+      17179869184),
      ('foo',
-      34359738368L)]
+      34359738368)]
 
     >>> pprint.pprint(
-    ...     sorted(long(u64(oid)) for oid in oids.iterator('foo')),
+    ...     sorted(int(u64(oid)) for oid in oids.iterator('foo')),
     ...     width=1)
-    [0L,
-     2147483647L,
-     2147483648L,
-     2147483649L,
-     4294967296L,
-     17179869184L,
-     34359738368L]
+    [0,
+     2147483647,
+     2147483648,
+     2147483649,
+     4294967296,
+     17179869184,
+     34359738368]
 
     >>> for oid in oids.iterator('foo'):
     ...     if not oids.insert('bar', oid):
-    ...         print `oid`
+    ...         print(repr(oid))
 
     >>> sorted(oids.iterator('foo')) == sorted(oids.iterator('bar'))
     True
 
     >>> pprint.pprint(
-    ...     sorted((name, long(u64(oid))) for (name, oid) in oids.iterator()),
+    ...     sorted((name, int(u64(oid))) for (name, oid) in oids.iterator()),
     ...     width=1)
     [('bar',
-      0L),
+      0),
      ('bar',
-      2147483647L),
+      2147483647),
      ('bar',
-      2147483648L),
+      2147483648),
      ('bar',
-      2147483649L),
+      2147483649),
      ('bar',
-      4294967296L),
+      4294967296),
      ('bar',
-      17179869184L),
+      17179869184),
      ('bar',
-      34359738368L),
+      34359738368),
      ('foo',
-      0L),
+      0),
      ('foo',
-      2147483647L),
+      2147483647),
      ('foo',
-      2147483648L),
+      2147483648),
      ('foo',
-      2147483649L),
+      2147483649),
      ('foo',
-      4294967296L),
+      4294967296),
      ('foo',
-      17179869184L),
+      17179869184),
      ('foo',
-      34359738368L)]
+      34359738368)]
 
     >>> oids.remove('foo', p64(1<<31))
     >>> oids.remove('foo', p64((1<<31)+1))
     >>> oids.remove('foo', p64((1<<31)-1))
 
     >>> pprint.pprint(
-    ...     sorted(long(u64(oid)) for oid in oids.iterator('foo')),
+    ...     sorted(int(u64(oid)) for oid in oids.iterator('foo')),
     ...     width=1)
-    [0L,
-     4294967296L,
-     17179869184L,
-     34359738368L]
+    [0,
+     4294967296,
+     17179869184,
+     34359738368]
 
     >>> import random
     >>> r = random.Random()
@@ -183,12 +183,12 @@ name/oid pairs efficiently.
     ...     name = r.choice(('foo', 'bar'))
     ...     oid = p64(r.randint(0, 1<<32))
     ...     if (name, oid) in generated_oids:
-    ...         print 'dup', (name, oid)
+    ...         print( 'dup', (name, oid) )
     ...         if oids.insert(name, oid):
-    ...            print 'wth dup', name, `oid`
+    ...            print( 'wth dup', name, repr(oid) )
     ...     else:
     ...         if not oids.insert(name, oid):
-    ...             print 'wth', name, `oid`
+    ...             print( 'wth', name, repr(oid) )
     ...         generated_oids.append((name, oid))
 
     >>> sorted(generated_oids) == sorted(oids.iterator())
@@ -199,7 +199,7 @@ name/oid pairs efficiently.
     ...     choice = r.choice(generated_oids)
     ...     if action == 'i':
     ...         if oids.insert(*choice):
-    ...             print 'wth', choice
+    ...             print( 'wth', choice )
     ...     else:
     ...         generated_oids.remove(choice)
     ...         oids.remove(*choice)

@@ -12,15 +12,39 @@
 #
 ##############################################################################
 
+from __future__ import print_function
+
 from ZODB.utils import z64
 import BTrees.fsBTree
 import BTrees.OOBTree
 import BTrees.LLBTree
-import cPickle
-import cStringIO
+try:
+    import zodbpickle
+except ImportError:
+    import cPickle
+else:
+    # We're on a platform where we needed zodbpickle
+    # because of a broken/missing noload (PyPy or CPython >= 2.7).
+    # (or the user just happened to have it installed)
+    # In that case, use the fastest version we can have access
+    # to (PyPy doesn't have fastpickle)
+    try:
+        from zodbpickle import fastpickle as cPickle
+    except ImportError:
+        from zodbpickle import pickle as cPickle
+
+    # Older versions of ZODB aren't aware of needing to use zodbpickle
+    # under PyPy and hence have broken functions at `ZODB.serialize.referencesf`
+    # and `ZODB.serialize.get_refs`. Check for that and patch it.
+    import ZODB.serialize
+    if hasattr(ZODB.serialize, 'Unpickler') and not hasattr(ZODB.serialize.Unpickler, 'noload'):
+        ZODB.serialize.Unpickler = cPickle.Unpickler
+
+from io import BytesIO
 import logging
 import marshal
 import optparse
+from persistent import TimeStamp
 import struct
 import sys
 import tempfile
@@ -31,15 +55,17 @@ import ZODB.config
 import ZODB.FileStorage
 import ZODB.fsIndex
 import ZODB.POSException
-import ZODB.TimeStamp
+
+
+
 
 def p64(v):
     """Pack an integer or long into a 8-byte string"""
-    return struct.pack(">q", v)
+    return struct.pack(b">q", v)
 
 def u64(v):
     """Unpack an 8-byte string into a 64-bit signed long integer."""
-    return struct.unpack(">q", v)[0]
+    return struct.unpack(b">q", v)[0]
 
 logger = logging.getLogger(__name__)
 log_format = "%(asctime)s %(name)s %(levelname)s: %(message)s"
@@ -104,12 +130,14 @@ def gc(conf, days=1, ignore=(), conf2=None, fs=(), untransform=None, ptid=None):
     try:
         return gc_(close, conf, days, ignore, conf2, fs, untransform, ptid)
     finally:
-        for db in close:
-            for db in db.databases.itervalues():
-                db.close()
+        for thing in close:
+            if hasattr(thing, 'databases'):
+                for db in thing.databases.values():
+                    db.close()
+            elif hasattr(thing, 'close'):
+                thing.close()
 
 def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
-
     FileIterator = ZODB.FileStorage.FileIterator
     if untransform is not None:
         def FileIterator(*args):
@@ -118,16 +146,22 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
                     if record.data:
                         record.data = untransform(record.data)
                     yield record
-            for t in ZODB.FileStorage.FileIterator(*args):
-                yield transit(t)
+            zfsit = ZODB.FileStorage.FileIterator(*args)
+            try:
+                for t in zfsit:
+                    yield transit(t)
+            finally:
+                zfsit.close()
 
-    db1 = ZODB.config.databaseFromFile(open(conf))
+    with open(conf) as f:
+        db1 = ZODB.config.databaseFromFile(f)
     close.append(db1)
     if conf2 is None:
         db2 = db1
     else:
         logger.info("Using secondary configuration, %s, for analysis", conf2)
-        db2 = ZODB.config.databaseFromFile(open(conf2))
+        with open(conf2) as f:
+            db2 = ZODB.config.databaseFromFile(f)
         close.append(db2)
         if set(db1.databases) != set(db2.databases):
             raise ValueError("primary and secondary databases don't match.")
@@ -136,13 +170,19 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
     storages = sorted((name, d.storage) for (name, d) in databases.items())
 
     if ptid is None:
-        ptid = repr(
-            ZODB.TimeStamp.TimeStamp(
+        ptid = TimeStamp.TimeStamp(
                 *time.gmtime(time.time() - 86400*days)[:6]
-                ))
+                ).raw()
 
     good = oidset(databases)
     bad = Bad(databases)
+    # XXX: Closing Bad breaks the Bad.iterator(name) method
+    # However, that method is not documented or tested.
+    # Can it be removed or made optional? (If it's removed/optional
+    # it can speed up GC because it avoids file writes.)
+    # OTOH, not closing Bad yields ResourceWarnings under Py3
+    # and (temporarily?) leaks files under PyPy/Jython.
+    #close.append(bad)
     deleted = oidset(databases)
 
     for name, storage in storages:
@@ -163,6 +203,9 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
                 it = FileIterator(fs[fsname], ptid)
             else:
                 it = storage.iterator(ptid)
+            # We need to be sure to always close iterators
+            # in case we raise an exception
+            close.append(it)
 
             for trans in it:
                 for record in trans:
@@ -193,6 +236,9 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
             it = FileIterator(fs[fsname], None, ptid)
         else:
             it = storage.iterator(None, ptid)
+        # We need to be sure to always close iterators
+        # in case we raise an exception
+        close.append(it)
 
         for trans in it:
             for record in trans:
@@ -228,13 +274,13 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
                     deleted.insert(name, oid)
 
     if conf2 is not None:
-        for db in db2.databases.itervalues():
+        for db in db2.databases.values():
             db.close()
-        close.pop()
+        close.remove(db2)
 
     # Now, we have the garbage in bad.  Remove it.
     batch_size = 100
-    for name, db in sorted(db1.databases.iteritems()):
+    for name, db in sorted(db1.databases.items()):
         logger.info("%s: remove garbage", name)
         storage = db.storage
         nd = 0
@@ -273,8 +319,8 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
 
 def getrefs(p, rname, ignore):
     refs = []
-    u = cPickle.Unpickler(cStringIO.StringIO(p))
-    u.persistent_load = refs
+    u = cPickle.Unpickler(BytesIO(p))
+    u.persistent_load = refs.append
     u.noload()
     u.noload()
     for ref in refs:
@@ -319,16 +365,17 @@ class oidset(dict):
                 del self[name][prefix]
 
     def __nonzero__(self):
-        for v in self.itervalues():
+        for v in self.values():
             if v:
                 return True
         return False
+    __bool__ = __nonzero__
 
     def pop(self):
-        for name, data in self.iteritems():
+        for name, data in self.items():
             if data:
                break
-        prefix, s = data.iteritems().next()
+        prefix, s = next(iter(data.items()))
         suffix = s.maxKey()
         s.remove(suffix)
         if not s:
@@ -348,11 +395,11 @@ class oidset(dict):
                 for oid in self.iterator(name):
                     yield name, oid
         else:
-            for prefix, data in self[name].iteritems():
+            for prefix, data in self[name].items():
                 for suffix in data:
                     yield prefix+suffix
 
-class Bad:
+class Bad(object):
 
     def __init__(self, names):
         self._file = tempfile.TemporaryFile(dir='.', prefix='gcbad')
@@ -369,7 +416,8 @@ class Bad:
 
     def __nonzero__(self):
         raise SystemError('wtf')
-        return sum(map(bool, self._dbs.itervalues()))
+        return sum(map(bool, self._dbs.values()))
+    __bool__ = __nonzero__
 
     def has(self, name, oid):
         db = self._dbs[name]
@@ -382,7 +430,7 @@ class Bad:
                     yield name, oid
         else:
             f = self._file
-            for oid, pos in self._dbs[name].iteritems():
+            for oid, pos in self._dbs[name].items():
                 f.seek(pos)
                 yield oid, f.read(8)
 
@@ -431,6 +479,7 @@ def check(config, refdb=None):
         check_(config, references)
     finally:
         transaction.commit()
+        conn.close()
         fs.close()
 
 def _insert_ref(references, rname, roid, name, oid):
@@ -441,6 +490,13 @@ def _insert_ref(references, rname, roid, name, oid):
     by_oid = references.get(name)
     if not by_oid:
         by_oid = references[name] = BTrees.LOBTree.BTree()
+        # Setting _p_changed is needed when using older versions of
+        # the pure-python BTree package (e.g., under PyPy). This is
+        # a bug documented at https://github.com/zopefoundation/BTrees/pull/11.
+        # Without it, the References example in README.test fails
+        # with a KeyError: the 'db2' key is not found because it wasn't
+        # persisted to disk.
+        references._p_changed = True
     by_rname = by_oid.get(oid)
     if not by_rname:
         references = BTrees.LLBTree.TreeSet()
@@ -462,6 +518,7 @@ def _insert_ref(references, rname, roid, name, oid):
 
     if roid not in references:
         references.insert(roid)
+        references._p_changed = True
         return True
     return False
 
@@ -474,68 +531,71 @@ def _get_referer(references, name, oid):
         by_rname = by_oid.get(oid)
         if by_rname:
             if isinstance(by_rname, dict):
-                rname = iter(by_rname).next()
-                return rname, p64(iter(by_rname[rname]).next())
+                rname = next(iter(by_rname))
+                return rname, p64(next(iter(by_rname[rname])))
             else:
-                return name, p64(iter(by_rname).next())
+                return name, p64(next(iter(by_rname)))
 
 def check_(config, references=None):
-    db = ZODB.config.databaseFromFile(open(config))
-    databases = db.databases
-    storages = dict((name, db.storage) for (name, db) in databases.iteritems())
+    with open(config) as f:
+        db = ZODB.config.databaseFromFile(f)
+    try:
+        databases = db.databases
+        storages = dict((name, db.storage) for (name, db) in databases.items())
 
-    roots = oidset(databases)
-    for name in databases:
-        roots.insert(name, z64)
-    seen = oidset(databases)
-    nreferences = 0
+        roots = oidset(databases)
+        for name in databases:
+            roots.insert(name, z64)
+        seen = oidset(databases)
+        nreferences = 0
 
-    while roots:
-        name, oid = roots.pop()
+        while roots:
+            name, oid = roots.pop()
 
-        try:
-            if not seen.insert(name, oid):
+            try:
+                if not seen.insert(name, oid):
+                    continue
+                p, tid = storages[name].load(oid, b'')
+                if (
+                    # XXX should be in is_blob_record
+                    len(p) < 100 and (b'ZODB.blob' in p)
+
+                    and ZODB.blob.is_blob_record(p)
+                    ):
+                    storages[name].loadBlob(oid, tid)
+            except:
+                print( '!!!', name, u64(oid), end=' ')
+
+                referer = _get_referer(references, name, oid)
+                if referer:
+                    rname, roid = referer
+                    print( rname, u64(roid) )
+                else:
+                    print( '?' )
+                t, v = sys.exc_info()[:2]
+                print( "%s: %s" % (t.__name__, v))
                 continue
-            p, tid = storages[name].load(oid, '')
-            if (
-                # XXX should be in is_blob_record
-                len(p) < 100 and ('ZODB.blob' in p)
 
-                and ZODB.blob.is_blob_record(p)
-                ):
-                storages[name].loadBlob(oid, tid)
-        except:
-            print '!!!', name, u64(oid),
+            for ref in getrefs(p, name, ()):
+                if (ref[0] != name) and not databases[name].xrefs:
+                    print( 'bad xref', ref[0], u64(ref[1]), name, u64(oid))
 
-            referer = _get_referer(references, name, oid)
-            if referer:
-                rname, roid = referer
-                print rname, u64(roid)
-            else:
-                print '?'
-            t, v = sys.exc_info()[:2]
-            print "%s: %s" % (t.__name__, v)
-            continue
+                nreferences += _insert_ref(references, name, oid, *ref)
 
-        for ref in getrefs(p, name, ()):
-            if (ref[0] != name) and not databases[name].xrefs:
-                print 'bad xref', ref[0], u64(ref[1]), name, u64(oid)
+                if nreferences > 400:
+                    transaction.commit()
+                    nreferences = 0
 
-            nreferences += _insert_ref(references, name, oid, *ref)
-
-            if nreferences > 400:
-                transaction.commit()
-                nreferences = 0
-
-            if ref[0] not in databases:
-                print '!!!', ref[0], u64(ref[1]), name, u64(oid)
-                print 'bad db'
-                continue
-            if seen.has(*ref):
-                continue
-            roots.insert(*ref)
-
-    [d.close() for d in db.databases.values()]
+                if ref[0] not in databases:
+                    print( '!!!', ref[0], u64(ref[1]), name, u64(oid))
+                    print( 'bad db')
+                    continue
+                if seen.has(*ref):
+                    continue
+                roots.insert(*ref)
+    finally:
+        for d in db.databases.values():
+            d.close()
 
 def check_command(args=None):
     if args is None:
@@ -554,18 +614,22 @@ def check_command(args=None):
 
     check(args[0], options.refdb)
 
-class References:
+class References(object):
 
     def __init__(self, db):
         self._conn = ZODB.connection(db)
         self._refs = self._conn.root.references
 
-    def __getitem__(self, (name, oid)):
-        if isinstance(oid, str):
+    def close(self):
+        self._conn.close()
+
+    def __getitem__(self, arg):
+        name, oid = arg
+        if isinstance(oid, (str, bytes)):
             oid = u64(oid)
         by_rname = self._refs[name][oid]
         if isinstance(by_rname, dict):
-            for rname, roids in by_rname.iteritems():
+            for rname, roids in by_rname.items():
                 for roid in roids:
                     yield rname, roid
         else:

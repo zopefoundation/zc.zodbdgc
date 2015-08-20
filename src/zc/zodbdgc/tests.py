@@ -22,13 +22,13 @@ import zc.zodbdgc
 import ZODB.config
 
 def untransform(data):
-    if data[:2] == '.h':
+    if data[:2] == b'.h':
         data = binascii.a2b_hex(data[2:])
     return data
 
 def hex_pack(self, pack_time, referencesf, *args):
     def refs(p, oids=None):
-        if p and p[:2] == '.h':
+        if p and p[:2] == b'.h':
             p = binascii.a2b_hex(p[2:])
         return referencesf(p, oids)
     return self.base.pack(pack_time, refs, *args)
@@ -46,7 +46,8 @@ untransform data records when accessing the file-storage file directly.
 
 First, open a database and create some data:
 
-    >>> open('config', 'w').write('''
+    >>> f = open('config', 'w')
+    >>> _ = f.write('''
     ... %import ZODB.tests
     ... <zodb>
     ...   <hexstorage>
@@ -57,7 +58,10 @@ First, open a database and create some data:
     ...   </hexstorage>
     ... </zodb>
     ... ''')
-    >>> db = ZODB.config.databaseFromFile(open('config'))
+    >>> f.close()
+
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
     >>> conn = db.open()
     >>> for i in range(9):
     ...     conn.root()[i] = conn.root().__class__()
@@ -99,12 +103,13 @@ Now GC. We should lose 3 objects:
     >>> import pprint
     >>> pprint.pprint(list(zc.zodbdgc.gc_command(
     ...   '-f=data.fs -uzc.zodbdgc.tests:untransform config'
-    ...   .split(), ptid).iterator()))
-    [('', '\x00\x00\x00\x00\x00\x00\x00\x01'),
-     ('', '\x00\x00\x00\x00\x00\x00\x00\x02'),
-     ('', '\x00\x00\x00\x00\x00\x00\x00\x03')]
+    ...   .split(), ptid).iterator())) #doctest: +ELLIPSIS
+    [('', ...'\x00\x00\x00\x00\x00\x00\x00\x01'),
+     ('', ...'\x00\x00\x00\x00\x00\x00\x00\x02'),
+     ('', ...'\x00\x00\x00\x00\x00\x00\x00\x03')]
 
-    >>> db = ZODB.config.databaseFromFile(open('config'))
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
     >>> db.pack()
     >>> len(db.storage)
     7
@@ -114,7 +119,8 @@ Now GC. We should lose 3 objects:
 def stupid_typo_nameerror_not():
     """
 
-    >>> open('config', 'w').write('''
+    >>> f = open('config', 'w')
+    >>> _ = f.write('''
     ... <zodb db>
     ...     <filestorage>
     ...         pack-gc false
@@ -123,9 +129,11 @@ def stupid_typo_nameerror_not():
     ...     </filestorage>
     ... </zodb>
     ... ''')
+    >>> f.close()
     >>> import persistent.mapping, time
     >>> with mock.patch("time.time", return_value=1241458549.614022):
-    ...     db = ZODB.config.databaseFromFile(open('config'))
+    ...     with open('config') as f:
+    ...          db = ZODB.config.databaseFromFile(f)
     ...     conn = db.open()
     ...     junk = persistent.mapping.PersistentMapping()
     ...     conn.add(junk)
@@ -144,9 +152,10 @@ def stupid_typo_nameerror_not():
     ...     from ZODB.utils import u64
     ...     bad = zc.zodbdgc.gc('config', days=1)
     ...     for name, oid in sorted(bad.iterator()):
-    ...         print name, u64(oid)
+    ...         print( "{0} {1}".format(name, u64(oid)) )
     ...     time.time.return_value += 86400*1.5
-    ...     db = ZODB.config.databaseFromFile(open('config'))
+    ...     with open('config', 'r') as f:
+    ...         db = ZODB.config.databaseFromFile(f)
     ...     len(db.storage)
     ...     db.pack()
     ...     len(db.storage)
@@ -158,7 +167,8 @@ def stupid_typo_nameerror_not():
 
 def test_missmatched_configs():
     """
-    >>> open('config1', 'w').write('''
+    >>> f = open('config1', 'w')
+    >>> _ = f.write('''
     ... <zodb>
     ...     <filestorage>
     ...         pack-gc false
@@ -167,7 +177,9 @@ def test_missmatched_configs():
     ...     </filestorage>
     ... </zodb>
     ... ''')
-    >>> open('config2', 'w').write('''
+    >>> f.close()
+    >>> f = open('config2', 'w')
+    >>> _ = f.write('''
     ... <zodb db>
     ...     <filestorage>
     ...         pack-gc false
@@ -176,6 +188,7 @@ def test_missmatched_configs():
     ...     </filestorage>
     ... </zodb>
     ... ''')
+    >>> f.close()
     >>> bad = zc.zodbdgc.gc('config1', conf2='config2')
     Traceback (most recent call last):
     ...
@@ -203,4 +216,3 @@ def test_suite():
             setUp=setupstack.setUpDirectory, tearDown = setupstack.tearDown,
             ))
     return suite
-

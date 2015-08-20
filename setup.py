@@ -12,9 +12,11 @@
 #
 ##############################################################################
 
-name, version = 'zc.zodbdgc', '0'
+name, version = 'zc.zodbdgc', '0.6.2.dev0'
 
 import os
+import platform
+import sys
 from setuptools import setup, find_packages
 
 entry_points = """
@@ -35,6 +37,24 @@ long_description = (
         )
 
 tests_require = ['zope.testing', 'mock']
+install_requires = [
+    "BTrees >= 4.0.0",
+    "ZODB >= 4.0.0",
+    "persistent >= 4.0.0",
+    "setuptools",
+    "transaction",
+    ]
+
+# PyPy, Jython, and Py3K don't have cPickle's `noload`, and `noload` is broken in CPython >= 2.7
+py_impl = getattr(platform, 'python_implementation', lambda: None)
+is_pypy = py_impl() == 'PyPy'
+is_jython = py_impl() == 'Jython'
+py3k = sys.version_info >= (3, )
+py27 = sys.version_info >= (2, 7)
+
+if is_pypy or is_jython or py27 or py3k:
+    install_requires.append('zodbpickle')
+
 
 setup(
     name = name,
@@ -45,10 +65,10 @@ setup(
     long_description=long_description,
     license = 'ZPL 2.1',
 
-    packages = find_packages('src'),
+    packages = ['zc', 'zc.zodbdgc'],
     namespace_packages = ['zc'],
     package_dir = {'': 'src'},
-    install_requires = ['setuptools', 'ZODB3 >=3.9.0b2'],
+    install_requires=install_requires,
     zip_safe = False,
     entry_points=entry_points,
     include_package_data = True,
@@ -57,4 +77,19 @@ setup(
         test=tests_require,
         ),
     test_suite='zc.zodbdgc.tests.test_suite',
+	classifiers=[
+        "Framework :: ZODB"
+        "License :: OSI Approved :: Zope Public License",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python",
+        "Programming Language :: Python :: 2",
+        "Programming Language :: Python :: 2.6",
+        "Programming Language :: Python :: 2.7",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.2",
+        "Programming Language :: Python :: 3.3",
+        "Programming Language :: Python :: 3.4",
+        "Programming Language :: Python :: Implementation :: CPython",
+        "Programming Language :: Python :: Implementation :: PyPy",
+    ],
     )
