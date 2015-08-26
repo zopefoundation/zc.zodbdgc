@@ -8,12 +8,13 @@
 - Add support for PyPy, Python 2.7, and Python 3.
   This requires the addition of the ``zodbpickle`` dependency, even on
   Python 2.6.
-
+- Fixed the ``--days`` argument to ``multi-zodb-gc`` with recent
+  versions of ``persistent``.
 
 0.6.1 2012-10-08
 ================
 
-Fixed: GC could fail it special cases with a NameError.
+- Fixed: GC could fail it special cases with a NameError.
 
 0.6.0 2010-05-27
 ================

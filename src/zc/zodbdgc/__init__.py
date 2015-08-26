@@ -18,27 +18,23 @@ from ZODB.utils import z64
 import BTrees.fsBTree
 import BTrees.OOBTree
 import BTrees.LLBTree
+# For consistency and easy of distribution, always use zodbpickle. On
+# most platforms, including PyPy, and all CPython >= 2.7 or 3, we need
+# it because of missing or broken `noload` support. We could get away
+# without it under CPython 2.6, but there's not really any point. Use
+# the fastest version we can have access to (PyPy doesn't have
+# fastpickle)
 try:
-    import zodbpickle
+    from zodbpickle.fastpickle import Unpickler
 except ImportError:
-    import cPickle
-else:
-    # We're on a platform where we needed zodbpickle
-    # because of a broken/missing noload (PyPy or CPython >= 2.7).
-    # (or the user just happened to have it installed)
-    # In that case, use the fastest version we can have access
-    # to (PyPy doesn't have fastpickle)
-    try:
-        from zodbpickle import fastpickle as cPickle
-    except ImportError:
-        from zodbpickle import pickle as cPickle
+    from zodbpickle.pickle import Unpickler
 
-    # Older versions of ZODB aren't aware of needing to use zodbpickle
-    # under PyPy and hence have broken functions at `ZODB.serialize.referencesf`
-    # and `ZODB.serialize.get_refs`. Check for that and patch it.
-    import ZODB.serialize
-    if hasattr(ZODB.serialize, 'Unpickler') and not hasattr(ZODB.serialize.Unpickler, 'noload'):
-        ZODB.serialize.Unpickler = cPickle.Unpickler
+# Older versions of ZODB aren't aware of needing to use zodbpickle
+# under PyPy, etc, and hence have broken functions at `ZODB.serialize.referencesf`
+# and `ZODB.serialize.get_refs`. Check for that and patch it.
+import ZODB.serialize
+if hasattr(ZODB.serialize, 'Unpickler') and not hasattr(ZODB.serialize.Unpickler, 'noload'):
+    ZODB.serialize.Unpickler = Unpickler
 
 from io import BytesIO
 import logging
@@ -319,7 +315,7 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
 
 def getrefs(p, rname, ignore):
     refs = []
-    u = cPickle.Unpickler(BytesIO(p))
+    u = Unpickler(BytesIO(p))
     u.persistent_load = refs.append
     u.noload()
     u.noload()
