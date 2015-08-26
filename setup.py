@@ -15,7 +15,6 @@
 name, version = 'zc.zodbdgc', '0.6.2.dev0'
 
 import os
-import platform
 import sys
 from setuptools import setup, find_packages
 
@@ -43,18 +42,11 @@ install_requires = [
     "persistent >= 4.0.0",
     "setuptools",
     "transaction",
+    # PyPy, Jython, and Py3K don't have cPickle's `noload`, and `noload` is broken in CPython >= 2.7.
+    # Use zodbpickle everywhere, even on cPython 2.6, for consistency and to avoid
+    # issues with wheels and dynamic install_requires.
+    "zodbpickle",
     ]
-
-# PyPy, Jython, and Py3K don't have cPickle's `noload`, and `noload` is broken in CPython >= 2.7
-py_impl = getattr(platform, 'python_implementation', lambda: None)
-is_pypy = py_impl() == 'PyPy'
-is_jython = py_impl() == 'Jython'
-py3k = sys.version_info >= (3, )
-py27 = sys.version_info >= (2, 7)
-
-if is_pypy or is_jython or py27 or py3k:
-    install_requires.append('zodbpickle')
-
 
 setup(
     name = name,
