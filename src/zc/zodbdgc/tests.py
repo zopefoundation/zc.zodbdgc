@@ -200,19 +200,19 @@ def test_suite():
     suite = unittest.TestSuite((
         doctest.DocFileSuite(
             'README.test', 'oidset.test',
-            setUp=setupstack.setUpDirectory, tearDown = setupstack.tearDown,
+            setUp=setupstack.setUpDirectory, tearDown=setupstack.tearDown,
             checker=renormalizing.RENormalizing([
                 (re.compile('usage'), 'Usage'),
                 (re.compile('options'), 'Options'),
-                ]),
-            ),
-        ))
+            ]),
+        ),
+    ))
     try:
         import ZODB.tests.hexstorage
     except ImportError:
         pass
     else:
         suite.addTest(doctest.DocTestSuite(
-            setUp=setupstack.setUpDirectory, tearDown = setupstack.tearDown,
-            ))
+            setUp=setupstack.setUpDirectory, tearDown=setupstack.tearDown,
+        ))
     return suite

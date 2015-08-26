@@ -45,36 +45,38 @@ install_requires = [
     "persistent >= 4.0.0",
     "setuptools >= 17.1",
     "transaction",
-    # PyPy, Jython, and Py3K don't have cPickle's `noload`, and `noload` is broken in CPython >= 2.7.
-    # Use zodbpickle everywhere, even on cPython 2.6, for consistency and to avoid
-    # issues with wheels and dynamic install_requires.
+    # PyPy, Jython, and Py3K don't have cPickle's `noload`, and `noload`
+    # is broken in CPython >= 2.7. Use zodbpickle everywhere, even on
+    # cPython 2.6, for consistency and to avoid issues with wheels and
+    # dynamic install_requires.
     "zodbpickle",
-    ]
+]
+
 
 setup(
-    name = name,
-    version = version,
-    author = 'Jim Fulton',
-    author_email = 'jim@zope.com',
-    description = 'ZODB Distributed Garbage Collection',
+    name=name,
+    version=version,
+    author='Jim Fulton',
+    author_email='jim@zope.com',
+    description='ZODB Distributed Garbage Collection',
     long_description=long_description,
-    license = 'ZPL 2.1',
-    url = "https://github.com/zopefoundation/zc.zodbdgc",
-    keywords = "database nosql python zope zodb garbage collection distributed",
+    license='ZPL 2.1',
+    url="https://github.com/zopefoundation/zc.zodbdgc",
+    keywords="database nosql python zope zodb garbage collection distributed",
 
-    packages = ['zc', 'zc.zodbdgc'],
-    namespace_packages = ['zc'],
-    package_dir = {'': 'src'},
+    packages=['zc', 'zc.zodbdgc'],
+    namespace_packages=['zc'],
+    package_dir={'': 'src'},
     install_requires=install_requires,
-    zip_safe = False,
+    zip_safe=False,
     entry_points=entry_points,
-    include_package_data = True,
+    include_package_data=True,
     tests_require=tests_require,
     extras_require=dict(
         test=tests_require,
-        ),
+    ),
     test_suite='zc.zodbdgc.tests.test_suite',
-	classifiers=[
+    classifiers=[
         "Framework :: ZODB"
         "License :: OSI Approved :: Zope Public License",
         "Operating System :: OS Independent",
@@ -89,4 +91,4 @@ setup(
         "Programming Language :: Python :: Implementation :: CPython",
         "Programming Language :: Python :: Implementation :: PyPy",
     ],
-    )
+)

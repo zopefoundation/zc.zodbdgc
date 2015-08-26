@@ -33,7 +33,8 @@ except ImportError:
 # under PyPy, etc, and hence have broken functions at `ZODB.serialize.referencesf`
 # and `ZODB.serialize.get_refs`. Check for that and patch it.
 import ZODB.serialize
-if hasattr(ZODB.serialize, 'Unpickler') and not hasattr(ZODB.serialize.Unpickler, 'noload'):
+if (hasattr(ZODB.serialize, 'Unpickler')
+    and not hasattr(ZODB.serialize.Unpickler, 'noload')):
     ZODB.serialize.Unpickler = Unpickler
 
 from io import BytesIO
@@ -59,11 +60,13 @@ import ZODB.POSException
 if hasattr(dict(), 'iteritems'):
     def _iteritems(d):
         return d.iteritems()
+
     def _itervalues(d):
         return d.itervalues()
 else:
     def _iteritems(d):
         return d.items()
+
     def _itervalues(d):
         return d.values()
 
@@ -110,7 +113,7 @@ def gc_command(args=None, ptid=None):
     if not args or len(args) > 2:
         parser.parse_args(['-h'])
     elif len(args) == 2:
-        conf2=args[1]
+        conf2 = args[1]
     else:
         conf2 = None
 
@@ -180,8 +183,8 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
 
     if ptid is None:
         ptid = TimeStamp.TimeStamp(
-                *time.gmtime(time.time() - 86400*days)[:6]
-                ).raw()
+            *time.gmtime(time.time() - 86400 * days)[:6]
+        ).raw()
 
     good = oidset(databases)
     bad = Bad(databases)
@@ -191,7 +194,9 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
     # it can speed up GC because it avoids file writes.)
     # OTOH, not closing Bad yields ResourceWarnings under Py3
     # and (temporarily?) leaks files under PyPy/Jython.
-    #close.append(bad)
+
+    # close.append(bad)
+
     deleted = oidset(databases)
 
     for name, storage in storages:
@@ -218,7 +223,7 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
 
             for trans in it:
                 for record in trans:
-                    if n and n%10000 == 0:
+                    if n and n % 10000 == 0:
                         logger.info("%s: %s recent", name, n)
                     n += 1
 
@@ -251,7 +256,7 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
 
         for trans in it:
             for record in trans:
-                if n and n%10000 == 0:
+                if n and n % 10000 == 0:
                     logger.info("%s: %s old", name, n)
                 n += 1
 
@@ -308,9 +313,9 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
                 storage.tpc_finish(t)
                 t.commit()
                 logger.info("%s: deleted %s", name, nd)
-                duration = time.time()-start
-                time.sleep(duration*2)
-                batch_size = max(10, int(batch_size*.5/duration))
+                duration = time.time() - start
+                time.sleep(duration * 2)
+                batch_size = max(10, int(batch_size * .5 / duration))
                 t = transaction.begin()
                 storage.tpc_begin(t)
                 start = time.time()
@@ -383,13 +388,13 @@ class oidset(dict):
     def pop(self):
         for name, data in _iteritems(self):
             if data:
-               break
+                break
         prefix, s = next(iter(_iteritems(data)))
         suffix = s.maxKey()
         s.remove(suffix)
         if not s:
             del data[prefix]
-        return name, prefix+suffix
+        return name, prefix + suffix
 
     def has(self, name, oid):
         try:
@@ -406,7 +411,7 @@ class oidset(dict):
         else:
             for prefix, data in _iteritems(self[name]):
                 for suffix in data:
-                    yield prefix+suffix
+                    yield prefix + suffix
 
 class Bad(object):
 
@@ -473,7 +478,7 @@ class Bad(object):
             return ()
         del db[oid]
         f = self._file
-        f.seek(pos+8)
+        f.seek(pos + 8)
         return marshal.load(f)
 
 
@@ -565,29 +570,27 @@ def check_(config, references=None):
                 if not seen.insert(name, oid):
                     continue
                 p, tid = storages[name].load(oid, b'')
-                if (
-                    # XXX should be in is_blob_record
+                if (# XXX should be in is_blob_record
                     len(p) < 100 and (b'ZODB.blob' in p)
-
-                    and ZODB.blob.is_blob_record(p)
-                    ):
+                        and ZODB.blob.is_blob_record(p)
+                ):
                     storages[name].loadBlob(oid, tid)
             except:
-                print( '!!!', name, u64(oid), end=' ')
+                print('!!!', name, u64(oid), end=' ')
 
                 referer = _get_referer(references, name, oid)
                 if referer:
                     rname, roid = referer
-                    print( rname, u64(roid) )
+                    print(rname, u64(roid))
                 else:
-                    print( '?' )
+                    print('?')
                 t, v = sys.exc_info()[:2]
-                print( "%s: %s" % (t.__name__, v))
+                print("%s: %s" % (t.__name__, v))
                 continue
 
             for ref in getrefs(p, name, ()):
                 if (ref[0] != name) and not databases[name].xrefs:
-                    print( 'bad xref', ref[0], u64(ref[1]), name, u64(oid))
+                    print('bad xref', ref[0], u64(ref[1]), name, u64(oid))
 
                 nreferences += _insert_ref(references, name, oid, *ref)
 
@@ -596,8 +599,8 @@ def check_(config, references=None):
                     nreferences = 0
 
                 if ref[0] not in databases:
-                    print( '!!!', ref[0], u64(ref[1]), name, u64(oid))
-                    print( 'bad db')
+                    print('!!!', ref[0], u64(ref[1]), name, u64(oid))
+                    print('bad db')
                     continue
                 if seen.has(*ref):
                     continue
