@@ -35,12 +35,12 @@ long_description = (
         '--------\n'
         )
 
-tests_require = ['zope.testing', 'mock']
+tests_require = ['zope.testing', 'mock >= 1.3.0']
 install_requires = [
     "BTrees >= 4.0.0",
     "ZODB >= 4.0.0",
     "persistent >= 4.0.0",
-    "setuptools",
+    "setuptools >= 17.1",
     "transaction",
     # PyPy, Jython, and Py3K don't have cPickle's `noload`, and `noload` is broken in CPython >= 2.7.
     # Use zodbpickle everywhere, even on cPython 2.6, for consistency and to avoid
