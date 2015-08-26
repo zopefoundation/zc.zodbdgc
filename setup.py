@@ -25,8 +25,8 @@ multi-zodb-check-refs = zc.zodbdgc:check_command
 """
 
 def read(rname):
-    return open(os.path.join(os.path.dirname(__file__), *rname.split('/')
-                             )).read()
+    with open(os.path.join(os.path.dirname(__file__), *rname.split('/'))) as f:
+        return f.read()
 
 long_description = (
         read('src/%s/README.txt' % '/'.join(name.split('.')))
