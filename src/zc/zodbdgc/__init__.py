@@ -52,7 +52,20 @@ import ZODB.FileStorage
 import ZODB.fsIndex
 import ZODB.POSException
 
-
+# In cases where we might iterate multiple times
+# over large-ish dictionaries, avoid excessive copies
+# that tend toward O(n^2) complexity by using the explicit
+# iteration functions on Python 2
+if hasattr(dict(), 'iteritems'):
+    def _iteritems(d):
+        return d.iteritems()
+    def _itervalues(d):
+        return d.itervalues()
+else:
+    def _iteritems(d):
+        return d.items()
+    def _itervalues(d):
+        return d.values()
 
 
 def p64(v):
@@ -361,17 +374,17 @@ class oidset(dict):
                 del self[name][prefix]
 
     def __nonzero__(self):
-        for v in self.values():
+        for v in _itervalues(self):
             if v:
                 return True
         return False
     __bool__ = __nonzero__
 
     def pop(self):
-        for name, data in self.items():
+        for name, data in _iteritems(self):
             if data:
                break
-        prefix, s = next(iter(data.items()))
+        prefix, s = next(iter(_iteritems(data)))
         suffix = s.maxKey()
         s.remove(suffix)
         if not s:
@@ -391,7 +404,7 @@ class oidset(dict):
                 for oid in self.iterator(name):
                     yield name, oid
         else:
-            for prefix, data in self[name].items():
+            for prefix, data in _iteritems(self[name]):
                 for suffix in data:
                     yield prefix+suffix
 
@@ -412,7 +425,7 @@ class Bad(object):
 
     def __nonzero__(self):
         raise SystemError('wtf')
-        return sum(map(bool, self._dbs.values()))
+        return sum(map(bool, _itervalues(self._dbs)))
     __bool__ = __nonzero__
 
     def has(self, name, oid):
@@ -426,7 +439,7 @@ class Bad(object):
                     yield name, oid
         else:
             f = self._file
-            for oid, pos in self._dbs[name].items():
+            for oid, pos in _iteritems(self._dbs[name]):
                 f.seek(pos)
                 yield oid, f.read(8)
 
@@ -625,7 +638,7 @@ class References(object):
             oid = u64(oid)
         by_rname = self._refs[name][oid]
         if isinstance(by_rname, dict):
-            for rname, roids in by_rname.items():
+            for rname, roids in _iteritems(by_rname):
                 for roid in roids:
                     yield rname, roid
         else:
