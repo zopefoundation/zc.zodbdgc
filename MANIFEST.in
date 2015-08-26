@@ -1,5 +1,7 @@
 include *.txt
 include *.rst
+exclude buildout.cfg
+exclude tox.ini
 
 recursive-include src *
 
