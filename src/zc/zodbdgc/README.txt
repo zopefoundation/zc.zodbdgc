@@ -72,10 +72,12 @@ information.
 Change History
 ==============
 
-0.6.2 (unreleased)
+0.7.0 (unreleased)
 ----------------
 
 - Add support for PyPy, Python 2.7, and Python 3.
+  This requires the addition of the ``zodbpickle`` dependency, even on
+  Python 2.6.
 
 
 0.6.1 2012-10-08

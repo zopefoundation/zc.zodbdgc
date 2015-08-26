@@ -12,7 +12,8 @@
 #
 ##############################################################################
 
-name, version = 'zc.zodbdgc', '0.6.2.dev0'
+name = 'zc.zodbdgc'
+version = '0.7.0.dev0'
 
 import os
 import sys
