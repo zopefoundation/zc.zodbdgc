@@ -1,7 +1,8 @@
 include *.txt
 include *.rst
-exclude buildout.cfg
-exclude tox.ini
+include buildout.cfg
+include tox.ini
+include .pep8
 
 recursive-include src *
 
