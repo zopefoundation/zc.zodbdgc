@@ -12,10 +12,10 @@
 #
 ##############################################################################
 
-name, version = 'zc.zodbdgc', '0.6.2.dev0'
+name = 'zc.zodbdgc'
+version = '0.7.0.dev0'
 
 import os
-import platform
 import sys
 from setuptools import setup, find_packages
 
@@ -26,58 +26,57 @@ multi-zodb-check-refs = zc.zodbdgc:check_command
 """
 
 def read(rname):
-    return open(os.path.join(os.path.dirname(__file__), *rname.split('/')
-                             )).read()
+    with open(os.path.join(os.path.dirname(__file__), *rname.split('/'))) as f:
+        return f.read()
 
 long_description = (
-        read('src/%s/README.txt' % '/'.join(name.split('.')))
-        + '\n' +
-        'Download\n'
-        '--------\n'
-        )
+    read('src/%s/README.txt' % '/'.join(name.split('.')))
+    + '\n' +
+    read('CHANGES.rst')
+    + '\n' +
+    'Download\n'
+    '========\n'
+)
 
-tests_require = ['zope.testing', 'mock']
+tests_require = ['zope.testing', 'mock >= 1.3.0']
 install_requires = [
     "BTrees >= 4.0.0",
     "ZODB >= 4.0.0",
     "persistent >= 4.0.0",
-    "setuptools",
+    "setuptools >= 17.1",
     "transaction",
-    ]
-
-# PyPy, Jython, and Py3K don't have cPickle's `noload`, and `noload` is broken in CPython >= 2.7
-py_impl = getattr(platform, 'python_implementation', lambda: None)
-is_pypy = py_impl() == 'PyPy'
-is_jython = py_impl() == 'Jython'
-py3k = sys.version_info >= (3, )
-py27 = sys.version_info >= (2, 7)
-
-if is_pypy or is_jython or py27 or py3k:
-    install_requires.append('zodbpickle')
+    # PyPy, Jython, and Py3K don't have cPickle's `noload`, and `noload`
+    # is broken in CPython >= 2.7. Use zodbpickle everywhere, even on
+    # cPython 2.6, for consistency and to avoid issues with wheels and
+    # dynamic install_requires.
+    "zodbpickle",
+]
 
 
 setup(
-    name = name,
-    version = version,
-    author = 'Jim Fulton',
-    author_email = 'jim@zope.com',
-    description = 'ZODB Distributed Garbage Collection',
+    name=name,
+    version=version,
+    author='Jim Fulton',
+    author_email='jim@zope.com',
+    description='ZODB Distributed Garbage Collection',
     long_description=long_description,
-    license = 'ZPL 2.1',
+    license='ZPL 2.1',
+    url="https://github.com/zopefoundation/zc.zodbdgc",
+    keywords="database nosql python zope zodb garbage collection distributed",
 
-    packages = ['zc', 'zc.zodbdgc'],
-    namespace_packages = ['zc'],
-    package_dir = {'': 'src'},
+    packages=['zc', 'zc.zodbdgc'],
+    namespace_packages=['zc'],
+    package_dir={'': 'src'},
     install_requires=install_requires,
-    zip_safe = False,
+    zip_safe=False,
     entry_points=entry_points,
-    include_package_data = True,
+    include_package_data=True,
     tests_require=tests_require,
     extras_require=dict(
         test=tests_require,
-        ),
+    ),
     test_suite='zc.zodbdgc.tests.test_suite',
-	classifiers=[
+    classifiers=[
         "Framework :: ZODB"
         "License :: OSI Approved :: Zope Public License",
         "Operating System :: OS Independent",
@@ -92,4 +91,4 @@ setup(
         "Programming Language :: Python :: Implementation :: CPython",
         "Programming Language :: Python :: Implementation :: PyPy",
     ],
-    )
+)

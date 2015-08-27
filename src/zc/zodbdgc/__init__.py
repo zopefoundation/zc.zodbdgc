@@ -18,27 +18,24 @@ from ZODB.utils import z64
 import BTrees.fsBTree
 import BTrees.OOBTree
 import BTrees.LLBTree
+# For consistency and easy of distribution, always use zodbpickle. On
+# most platforms, including PyPy, and all CPython >= 2.7 or 3, we need
+# it because of missing or broken `noload` support. We could get away
+# without it under CPython 2.6, but there's not really any point. Use
+# the fastest version we can have access to (PyPy doesn't have
+# fastpickle)
 try:
-    import zodbpickle
+    from zodbpickle.fastpickle import Unpickler
 except ImportError:
-    import cPickle
-else:
-    # We're on a platform where we needed zodbpickle
-    # because of a broken/missing noload (PyPy or CPython >= 2.7).
-    # (or the user just happened to have it installed)
-    # In that case, use the fastest version we can have access
-    # to (PyPy doesn't have fastpickle)
-    try:
-        from zodbpickle import fastpickle as cPickle
-    except ImportError:
-        from zodbpickle import pickle as cPickle
+    from zodbpickle.pickle import Unpickler
 
-    # Older versions of ZODB aren't aware of needing to use zodbpickle
-    # under PyPy and hence have broken functions at `ZODB.serialize.referencesf`
-    # and `ZODB.serialize.get_refs`. Check for that and patch it.
-    import ZODB.serialize
-    if hasattr(ZODB.serialize, 'Unpickler') and not hasattr(ZODB.serialize.Unpickler, 'noload'):
-        ZODB.serialize.Unpickler = cPickle.Unpickler
+# Older versions of ZODB aren't aware of needing to use zodbpickle
+# under PyPy, etc, and hence have broken functions at `ZODB.serialize.referencesf`
+# and `ZODB.serialize.get_refs`. Check for that and patch it.
+import ZODB.serialize
+if (hasattr(ZODB.serialize, 'Unpickler')
+    and not hasattr(ZODB.serialize.Unpickler, 'noload')):
+    ZODB.serialize.Unpickler = Unpickler
 
 from io import BytesIO
 import logging
@@ -56,7 +53,22 @@ import ZODB.FileStorage
 import ZODB.fsIndex
 import ZODB.POSException
 
+# In cases where we might iterate multiple times
+# over large-ish dictionaries, avoid excessive copies
+# that tend toward O(n^2) complexity by using the explicit
+# iteration functions on Python 2
+if hasattr(dict(), 'iteritems'):
+    def _iteritems(d):
+        return d.iteritems()
 
+    def _itervalues(d):
+        return d.itervalues()
+else:
+    def _iteritems(d):
+        return d.items()
+
+    def _itervalues(d):
+        return d.values()
 
 
 def p64(v):
@@ -101,7 +113,7 @@ def gc_command(args=None, ptid=None):
     if not args or len(args) > 2:
         parser.parse_args(['-h'])
     elif len(args) == 2:
-        conf2=args[1]
+        conf2 = args[1]
     else:
         conf2 = None
 
@@ -171,8 +183,8 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
 
     if ptid is None:
         ptid = TimeStamp.TimeStamp(
-                *time.gmtime(time.time() - 86400*days)[:6]
-                ).raw()
+            *time.gmtime(time.time() - 86400 * days)[:6]
+        ).raw()
 
     good = oidset(databases)
     bad = Bad(databases)
@@ -182,7 +194,9 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
     # it can speed up GC because it avoids file writes.)
     # OTOH, not closing Bad yields ResourceWarnings under Py3
     # and (temporarily?) leaks files under PyPy/Jython.
-    #close.append(bad)
+
+    # close.append(bad)
+
     deleted = oidset(databases)
 
     for name, storage in storages:
@@ -209,7 +223,7 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
 
             for trans in it:
                 for record in trans:
-                    if n and n%10000 == 0:
+                    if n and n % 10000 == 0:
                         logger.info("%s: %s recent", name, n)
                     n += 1
 
@@ -242,7 +256,7 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
 
         for trans in it:
             for record in trans:
-                if n and n%10000 == 0:
+                if n and n % 10000 == 0:
                     logger.info("%s: %s old", name, n)
                 n += 1
 
@@ -299,9 +313,9 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
                 storage.tpc_finish(t)
                 t.commit()
                 logger.info("%s: deleted %s", name, nd)
-                duration = time.time()-start
-                time.sleep(duration*2)
-                batch_size = max(10, int(batch_size*.5/duration))
+                duration = time.time() - start
+                time.sleep(duration * 2)
+                batch_size = max(10, int(batch_size * .5 / duration))
                 t = transaction.begin()
                 storage.tpc_begin(t)
                 start = time.time()
@@ -319,7 +333,7 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
 
 def getrefs(p, rname, ignore):
     refs = []
-    u = cPickle.Unpickler(BytesIO(p))
+    u = Unpickler(BytesIO(p))
     u.persistent_load = refs.append
     u.noload()
     u.noload()
@@ -365,22 +379,22 @@ class oidset(dict):
                 del self[name][prefix]
 
     def __nonzero__(self):
-        for v in self.values():
+        for v in _itervalues(self):
             if v:
                 return True
         return False
     __bool__ = __nonzero__
 
     def pop(self):
-        for name, data in self.items():
+        for name, data in _iteritems(self):
             if data:
-               break
-        prefix, s = next(iter(data.items()))
+                break
+        prefix, s = next(iter(_iteritems(data)))
         suffix = s.maxKey()
         s.remove(suffix)
         if not s:
             del data[prefix]
-        return name, prefix+suffix
+        return name, prefix + suffix
 
     def has(self, name, oid):
         try:
@@ -395,9 +409,9 @@ class oidset(dict):
                 for oid in self.iterator(name):
                     yield name, oid
         else:
-            for prefix, data in self[name].items():
+            for prefix, data in _iteritems(self[name]):
                 for suffix in data:
-                    yield prefix+suffix
+                    yield prefix + suffix
 
 class Bad(object):
 
@@ -416,7 +430,7 @@ class Bad(object):
 
     def __nonzero__(self):
         raise SystemError('wtf')
-        return sum(map(bool, self._dbs.values()))
+        return sum(map(bool, _itervalues(self._dbs)))
     __bool__ = __nonzero__
 
     def has(self, name, oid):
@@ -430,7 +444,7 @@ class Bad(object):
                     yield name, oid
         else:
             f = self._file
-            for oid, pos in self._dbs[name].items():
+            for oid, pos in _iteritems(self._dbs[name]):
                 f.seek(pos)
                 yield oid, f.read(8)
 
@@ -464,7 +478,7 @@ class Bad(object):
             return ()
         del db[oid]
         f = self._file
-        f.seek(pos+8)
+        f.seek(pos + 8)
         return marshal.load(f)
 
 
@@ -556,29 +570,27 @@ def check_(config, references=None):
                 if not seen.insert(name, oid):
                     continue
                 p, tid = storages[name].load(oid, b'')
-                if (
-                    # XXX should be in is_blob_record
+                if (# XXX should be in is_blob_record
                     len(p) < 100 and (b'ZODB.blob' in p)
-
-                    and ZODB.blob.is_blob_record(p)
-                    ):
+                        and ZODB.blob.is_blob_record(p)
+                ):
                     storages[name].loadBlob(oid, tid)
             except:
-                print( '!!!', name, u64(oid), end=' ')
+                print('!!!', name, u64(oid), end=' ')
 
                 referer = _get_referer(references, name, oid)
                 if referer:
                     rname, roid = referer
-                    print( rname, u64(roid) )
+                    print(rname, u64(roid))
                 else:
-                    print( '?' )
+                    print('?')
                 t, v = sys.exc_info()[:2]
-                print( "%s: %s" % (t.__name__, v))
+                print("%s: %s" % (t.__name__, v))
                 continue
 
             for ref in getrefs(p, name, ()):
                 if (ref[0] != name) and not databases[name].xrefs:
-                    print( 'bad xref', ref[0], u64(ref[1]), name, u64(oid))
+                    print('bad xref', ref[0], u64(ref[1]), name, u64(oid))
 
                 nreferences += _insert_ref(references, name, oid, *ref)
 
@@ -587,8 +599,8 @@ def check_(config, references=None):
                     nreferences = 0
 
                 if ref[0] not in databases:
-                    print( '!!!', ref[0], u64(ref[1]), name, u64(oid))
-                    print( 'bad db')
+                    print('!!!', ref[0], u64(ref[1]), name, u64(oid))
+                    print('bad db')
                     continue
                 if seen.has(*ref):
                     continue
@@ -629,7 +641,7 @@ class References(object):
             oid = u64(oid)
         by_rname = self._refs[name][oid]
         if isinstance(by_rname, dict):
-            for rname, roids in by_rname.items():
+            for rname, roids in _iteritems(by_rname):
                 for roid in roids:
                     yield rname, roid
         else:
