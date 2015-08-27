@@ -25,9 +25,9 @@ import BTrees.LLBTree
 # the fastest version we can have access to (PyPy doesn't have
 # fastpickle)
 try:
-    from zodbpickle.fastpickle import Unpickler
+    from zodbpickle import fastpickle as pickle
 except ImportError:
-    from zodbpickle.pickle import Unpickler
+    from zodbpickle import pickle
 
 # Older versions of ZODB aren't aware of needing to use zodbpickle
 # under PyPy, etc, and hence have broken functions at `ZODB.serialize.referencesf`
@@ -35,11 +35,10 @@ except ImportError:
 import ZODB.serialize
 if (hasattr(ZODB.serialize, 'Unpickler')
     and not hasattr(ZODB.serialize.Unpickler, 'noload')):
-    ZODB.serialize.Unpickler = Unpickler
+    ZODB.serialize.Unpickler = pickle.Unpickler
 
 from io import BytesIO
 import logging
-import marshal
 import optparse
 from persistent import TimeStamp
 import struct
@@ -333,7 +332,7 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
 
 def getrefs(p, rname, ignore):
     refs = []
-    u = Unpickler(BytesIO(p))
+    u = pickle.Unpickler(BytesIO(p))
     u.persistent_load = refs.append
     u.noload()
     u.noload()
@@ -415,8 +414,16 @@ class oidset(dict):
 
 class Bad(object):
 
-    def __init__(self, names):
-        self._file = tempfile.TemporaryFile(dir='.', prefix='gcbad')
+    def __init__(self, names, bufsize=(10 * 1024 * 1024)):
+        # Use a SpooledTemporaryFile to keep small data in memory and avoid
+        # any I/O overhead, and secondarily to eliminate some ResourceWarnings
+        # in the tests and many common scenarios. Unfortunately, under
+        # Python 2, :mod:`marshal` can't write to the initial StringIO,
+        # so even though it's a tiny bit faster reading and writing data we
+        # have to use pickle (the upside is that with HIGHEST_PROTOCOL, pickles
+        # are typically smaller).
+        self._file = tempfile.SpooledTemporaryFile(dir='.', prefix='gcbad',
+                                                   max_size=bufsize)
         self.close = self._file.close
         self._pos = 0
         self._dbs = {}
@@ -456,7 +463,7 @@ class Bad(object):
         if pos is not None:
             f.seek(pos)
             oldtid = f.read(8)
-            oldrefs = set(marshal.load(f))
+            oldrefs = set(pickle.load(f))
             refs = oldrefs.union(refs)
             tid = max(tid, oldtid)
             if refs == oldrefs:
@@ -468,7 +475,7 @@ class Bad(object):
         db[oid] = pos = self._pos
         f.seek(pos)
         f.write(tid)
-        marshal.dump(list(refs), f)
+        pickle.dump(list(refs), f, pickle.HIGHEST_PROTOCOL)
         self._pos = f.tell()
 
     def pop(self, name, oid):
@@ -479,7 +486,7 @@ class Bad(object):
         del db[oid]
         f = self._file
         f.seek(pos + 8)
-        return marshal.load(f)
+        return pickle.load(f)
 
 
 def check(config, refdb=None):
