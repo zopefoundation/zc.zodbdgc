@@ -100,13 +100,10 @@ Delete some more:
 
 Now GC. We should lose 3 objects:
 
-    >>> import pprint
-    >>> pprint.pprint(list(zc.zodbdgc.gc_command(
+    >>> zc.zodbdgc.gc_command(
     ...   '-f=data.fs -uzc.zodbdgc.tests:untransform config'
-    ...   .split(), ptid).iterator())) #doctest: +ELLIPSIS
-    [('', ...'\x00\x00\x00\x00\x00\x00\x00\x01'),
-     ('', ...'\x00\x00\x00\x00\x00\x00\x00\x02'),
-     ('', ...'\x00\x00\x00\x00\x00\x00\x00\x03')]
+    ...   .split(), ptid, return_bad=True)
+    [('', 1), ('', 2), ('', 3)]
 
     >>> with open('config', 'r') as f:
     ...     db = ZODB.config.databaseFromFile(f)
@@ -150,9 +147,9 @@ def stupid_typo_nameerror_not():
     ...     db.close()
     ...     import zc.zodbdgc, time
     ...     from ZODB.utils import u64
-    ...     bad = zc.zodbdgc.gc('config', days=1)
-    ...     for name, oid in sorted(bad.iterator()):
-    ...         print( "{0} {1}".format(name, u64(oid)) )
+    ...     bad = zc.zodbdgc.gc('config', days=1, return_bad=True)
+    ...     for name, oid in bad:
+    ...         print( "{0} {1}".format(name, oid) )
     ...     time.time.return_value += 86400*1.5
     ...     with open('config', 'r') as f:
     ...         db = ZODB.config.databaseFromFile(f)

@@ -9,8 +9,16 @@ python:
     - 3.4
     - pypy3
 install:
-    - pip install .
+    # First install a newer pip so that it can use the wheel cache
+    # (only needed until travis upgrades pip to 7.x)
+    - travis_retry pip install -U pip
+    - pip install -U ".[test]"
 script:
     - python setup.py test -q
 notifications:
     email: false
+cache:
+  directories:
+    - $HOME/.cache/pip
+before_cache:
+    - rm -f $HOME/.cache/pip/log/debug.log

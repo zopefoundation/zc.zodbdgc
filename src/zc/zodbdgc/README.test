@@ -200,10 +200,10 @@ Save databases for later:
 Now let's perform gc.
 
     >>> import zc.zodbdgc
-    >>> bad = zc.zodbdgc.gc('config', days=2)
+    >>> bad = zc.zodbdgc.gc('config', days=2, return_bad=True)
 
-    >>> for name, oid in sorted(bad.iterator()):
-    ...     print("{0} {1}".format( name, u64(oid)))
+    >>> for name, oid in bad:
+    ...     print("{0} {1}".format(name, oid))
     db1 2204
     db1 2205
     db1 2206
@@ -241,13 +241,13 @@ haven't packed yet.
     (2205, 4, 2)
 
     >>> import ZODB.POSException
-    >>> for name, oid in bad.iterator():
+    >>> for name, oid in bad:
     ...     try:
-    ...         conn1.get_connection(name)._storage.load(oid)
+    ...         conn1.get_connection(name)._storage.load(p64(oid))
     ...     except ZODB.POSException.POSKeyError:
     ...         pass
     ...     else:
-    ...         print('waaa', name, u64(oid))
+    ...         print('waaa', name, oid)
 
 Make sure we have no broken refs:
 
@@ -319,7 +319,7 @@ This time we'll use the command-line interface:
                             data records in files identified using the
                             -file-storage/-f option
 
-    >>> bad2 = zc.zodbdgc.gc_command(['-d2', 'config', 'config2'])
+    >>> bad2 = zc.zodbdgc.gc_command(['-d2', 'config', 'config2'], return_bad=True)
     Using secondary configuration, config2, for analysis
     db1: roots
     db1: recent
@@ -334,12 +334,12 @@ This time we'll use the command-line interface:
     db3: remove garbage
     Removed 2 objects from db3
 
-    >>> sorted(bad2.iterator()) == sorted(bad.iterator())
+    >>> bad2 == bad
     True
 
 We can gc again, even with deleted records:
 
-    >>> sorted(zc.zodbdgc.gc_command(['-d2', 'config']).iterator())
+    >>> zc.zodbdgc.gc_command(['-d2', 'config'], return_bad=True)
     db1: roots
     db1: recent
     db2: roots
@@ -378,7 +378,7 @@ logging:
     >>> logging.basicConfig = faux_basicConfig
 
     >>> sys.argv[:] = ['-d2', 'config']
-    >>> sorted(zc.zodbdgc.gc_command().iterator())
+    >>> zc.zodbdgc.gc_command(return_bad=True)
     basicConfig () {'level': 30}
     db1: roots
     db1: recent
@@ -397,7 +397,7 @@ logging:
 and check -l option handling:
 
     >>> sys.argv[:] = ['-d2', '-l10', 'config']
-    >>> sorted(zc.zodbdgc.gc_command().iterator())
+    >>> zc.zodbdgc.gc_command(return_bad=True)
     basicConfig () {'level': 10}
     db1: roots
     db1: recent
@@ -414,7 +414,7 @@ and check -l option handling:
     []
 
     >>> sys.argv[:] = ['-d2', '-lINFO', 'config']
-    >>> sorted(zc.zodbdgc.gc_command().iterator())
+    >>> zc.zodbdgc.gc_command(return_bad=True)
     basicConfig () {'level': 20}
     db1: roots
     db1: recent
@@ -452,7 +452,7 @@ Make sure we can omit days on the command line:
     ...     _ = shutil.copyfile('%s.fs' % n, '%s.fs-2' %n)
     ...     os.remove('%s.fs-2.index' % n)
 
-    >>> sorted(zc.zodbdgc.gc_command(['config', 'config2']).iterator())
+    >>> zc.zodbdgc.gc_command(['config', 'config2'], return_bad=True)
     Using secondary configuration, config2, for analysis
     db1: roots
     db1: recent
@@ -470,8 +470,7 @@ Make sure we can omit days on the command line:
 
 Try with 0 days:
 
-    >>> sorted((name, int(u64(oid))) for (name, oid) in
-    ...        zc.zodbdgc.gc_command(['-d0', 'config', 'config2']).iterator())
+    >>> zc.zodbdgc.gc_command(['-d0', 'config', 'config2'], return_bad=True)
     Using secondary configuration, config2, for analysis
     db1: roots
     db2: roots
@@ -649,19 +648,17 @@ databases.
     ... </zodb>
     ... """)
 
-    >>> sorted(zc.zodbdgc.gc_command(['config']).iterator())
+    >>> zc.zodbdgc.gc_command(['config'])
     Traceback (most recent call last):
     ...
     KeyError: 'db2'
 
-    >>> sorted(zc.zodbdgc.gc_command(['-idb2', 'config']).iterator())
-    ... # doctest: +NORMALIZE_WHITESPACE, +ELLIPSIS
+    >>> zc.zodbdgc.gc_command(['-idb2', 'config'], return_bad=True)
     db1: roots
     db1: recent
     db1: remove garbage
     Removed 2 objects from db1
-    [('db1', ...'\x00\x00\x00\x00\x00\x00\x00\x02'),
-     ('db1', ...'\x00\x00\x00\x00\x00\x00\x00\x03')]
+    [('db1', 2), ('db1', 3)]
 
     >>> os.remove('one.fs')
     >>> os.remove('two.fs')
@@ -715,9 +712,7 @@ files directly:
     >>> _ = [db.close() for db in db.databases.values()]
 
 
-    >>> sorted(zc.zodbdgc.gc_command(['-fdb1=one.fs', '-fdb2=two.fs', 'config']
-    ... ).iterator())
-    ... # doctest: +NORMALIZE_WHITESPACE,+ELLIPSIS
+    >>> zc.zodbdgc.gc_command(['-fdb1=one.fs', '-fdb2=two.fs', 'config'], return_bad=True)
     db1: roots
     db1: recent
     db2: roots
@@ -726,8 +721,7 @@ files directly:
     Removed 2 objects from db1
     db2: remove garbage
     Removed 0 objects from db2
-    [('db1', ...'\x00\x00\x00\x00\x00\x00\x00\x02'),
-     ('db1', ...'\x00\x00\x00\x00\x00\x00\x00\x03')]
+    [('db1', 2), ('db1', 3)]
 
     >>> os.remove('one.fs')
     >>> os.remove('two.fs')
