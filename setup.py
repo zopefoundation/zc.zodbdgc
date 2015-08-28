@@ -77,7 +77,7 @@ setup(
     ),
     test_suite='zc.zodbdgc.tests.test_suite',
     classifiers=[
-        "Framework :: ZODB"
+        "Framework :: ZODB",
         "License :: OSI Approved :: Zope Public License",
         "Operating System :: OS Independent",
         "Programming Language :: Python",
