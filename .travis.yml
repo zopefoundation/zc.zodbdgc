@@ -12,7 +12,7 @@ install:
     # First install a newer pip so that it can use the wheel cache
     # (only needed until travis upgrades pip to 7.x)
     - travis_retry pip install -U pip
-    - pip install .
+    - pip install -U ".[test]"
 script:
     - python setup.py test -q
 notifications:
