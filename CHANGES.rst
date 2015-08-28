@@ -10,6 +10,10 @@
   Python 2.6.
 - Fixed the ``--days`` argument to ``multi-zodb-gc`` with recent
   versions of ``persistent``.
+- The return values and arguments of the internal implementation
+  functions ``gc`` and ``gc_command`` have changed for compatibility
+  with Python 3. This will not impact users of the documented scripts
+  and is noted only for developers.
 
 0.6.1 (2012-10-08)
 ==================

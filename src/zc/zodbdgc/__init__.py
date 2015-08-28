@@ -82,7 +82,12 @@ def u64(v):
 logger = logging.getLogger(__name__)
 log_format = "%(asctime)s %(name)s %(levelname)s: %(message)s"
 
-def gc_command(args=None, ptid=None):
+def gc_command(args=None, ptid=None, return_bad=False):
+    # The setuptools entry point for running a garbage collection.
+    # Arguments and keyword arguments are for internal use only and
+    # may change at any time. The return value is only defined when
+    # return_bad is set to True; see :func:`gc`
+
     if args is None:
         args = sys.argv[1:]
         level = logging.WARNING
@@ -134,20 +139,37 @@ def gc_command(args=None, ptid=None):
 
     return gc(args[0], options.days, options.ignore or (), conf2=conf2,
               fs=dict(o.split('=') for o in options.fs or ()),
-              untransform=untransform, ptid=ptid)
+              untransform=untransform, ptid=ptid, return_bad=return_bad)
 
 
-def gc(conf, days=1, ignore=(), conf2=None, fs=(), untransform=None, ptid=None):
+def gc(conf, days=1, ignore=(), conf2=None, fs=(), untransform=None,
+       ptid=None, return_bad=False):
+    # The programmatic entry point for running a GC. Internal function
+    # only, all arguments and return values may change at any time.
     close = []
+    bad = None
     try:
-        return gc_(close, conf, days, ignore, conf2, fs, untransform, ptid)
+        bad = gc_(close, conf, days, ignore, conf2, fs, untransform, ptid)
     finally:
         for thing in close:
+            if return_bad and bad is thing:
+                continue
             if hasattr(thing, 'databases'):
                 for db in thing.databases.values():
                     db.close()
             elif hasattr(thing, 'close'):
                 thing.close()
+
+    if return_bad:
+        # For tests only, we return a sorted list of the human readable
+        # pairs (dbname, badoid) when requested. Remembering to close the Bad
+        # object when we're done in all cases.
+        try:
+            result = sorted((name, int(u64(oid))) for (name, oid)
+                            in bad.iterator())
+        finally:
+            bad.close()
+        return result
 
 def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
     FileIterator = ZODB.FileStorage.FileIterator
@@ -188,14 +210,7 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
 
     good = oidset(databases)
     bad = Bad(databases)
-    # XXX: Closing Bad breaks the Bad.iterator(name) method
-    # However, that method is not documented or tested.
-    # Can it be removed or made optional? (If it's removed/optional
-    # it can speed up GC because it avoids file writes.)
-    # OTOH, not closing Bad yields ResourceWarnings under Py3
-    # and (temporarily?) leaks files under PyPy/Jython.
-
-    # close.append(bad)
+    close.append(bad)
 
     deleted = oidset(databases)
 
