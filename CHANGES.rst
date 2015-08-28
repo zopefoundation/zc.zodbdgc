@@ -2,7 +2,7 @@
  Change History
 ================
 
-0.7.0 (unreleased)
+1.0.0 (2015-08-28)
 ==================
 
 - Add support for PyPy, Python 2.7, and Python 3.
