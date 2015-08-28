@@ -147,29 +147,24 @@ def gc(conf, days=1, ignore=(), conf2=None, fs=(), untransform=None,
     # The programmatic entry point for running a GC. Internal function
     # only, all arguments and return values may change at any time.
     close = []
-    bad = None
+    result = None
     try:
         bad = gc_(close, conf, days, ignore, conf2, fs, untransform, ptid)
+        if return_bad:
+            # For tests only, we return a sorted list of the human readable
+            # pairs (dbname, badoid) when requested. Bad will be closed
+            # in the following finally block.
+            result = sorted((name, int(u64(oid))) for (name, oid)
+                            in bad.iterator())
+        return result
     finally:
         for thing in close:
-            if return_bad and bad is thing:
-                continue
             if hasattr(thing, 'databases'):
                 for db in thing.databases.values():
                     db.close()
             elif hasattr(thing, 'close'):
                 thing.close()
 
-    if return_bad:
-        # For tests only, we return a sorted list of the human readable
-        # pairs (dbname, badoid) when requested. Remembering to close the Bad
-        # object when we're done in all cases.
-        try:
-            result = sorted((name, int(u64(oid))) for (name, oid)
-                            in bad.iterator())
-        finally:
-            bad.close()
-        return result
 
 def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
     FileIterator = ZODB.FileStorage.FileIterator
