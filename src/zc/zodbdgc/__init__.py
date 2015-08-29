@@ -70,7 +70,6 @@ else:
     def _itervalues(d):
         return d.values()
 
-
 def p64(v):
     """Pack an integer or long into a 8-byte string"""
     return struct.pack(b">q", v)
@@ -348,15 +347,45 @@ def getrefs(p, rname, ignore):
     u.noload()
     u.noload()
     for ref in refs:
+        # ref types are documented in ZODB.serialize
         if isinstance(ref, tuple):
+            # (oid, class meta data)
             yield rname, ref[0]
         elif isinstance(ref, str):
+            # oid
             yield rname, ref
-        else:
+        elif not ref:
+            # Seen in corrupted databases
+            raise ValueError("Unexpected empty reference")
+        elif ref:
             assert isinstance(ref, list)
-            ref = ref[1]
-            if ref[0] not in ignore:
-                yield ref[:2]
+            # [reference type, args] or [oid]
+            if len(ref) == 1:
+                # Legacy persistent weak ref. Ignored, not a
+                # strong ref.
+                # To treat as strong: yield rname, ref
+                continue
+
+            # Args is always a tuple, but depending on
+            # the value of the reference type, the order
+            # may be different. Types n and m are in the same
+            # order, type w is different
+            kind, ref = ref
+
+            if kind in ('n', 'm'):
+                # (dbname, oid, [class meta])
+                if ref[0] not in ignore:
+                    yield ref[:2]
+            elif kind == 'w':
+                # Weak ref, either (oid) for this DB
+                # or (oid, dbname) for other db. Both ignored.
+                # To treat the first as strong:
+                #   yield rname, ref[0]
+                # To treat the second as strong:
+                #   yield ref[1], ref[0]
+                continue
+            else:
+                raise ValueError('Unknown persistent ref', kind, ref)
 
 class oidset(dict):
     """

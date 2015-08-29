@@ -5,7 +5,7 @@
 1.0.1 (unreleased)
 ==================
 
-- Nothing changed yet.
+- Fix #6: Add support for weak references.
 
 
 1.0.0 (2015-08-28)
