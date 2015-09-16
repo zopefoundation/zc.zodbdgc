@@ -726,6 +726,219 @@ files directly:
     >>> os.remove('one.fs')
     >>> os.remove('two.fs')
 
+Weak References
+---------------
+
+The code properly handles all sorts of weak references: persistent
+refs within the same database and multi-database weak refs to
+persistent objects.
+
+First we setup some databases:
+
+    >>> with open('config', 'w') as f:
+    ...     _ = f.write("""
+    ... <zodb db1>
+    ...     <filestorage>
+    ...         path wone.fs
+    ...         pack-gc false
+    ...         pack-keep-old false
+    ...     </filestorage>
+    ... </zodb>
+    ... <zodb db2>
+    ...     <filestorage>
+    ...         path wtwo.fs
+    ...         pack-gc false
+    ...         pack-keep-old false
+    ...     </filestorage>
+    ... </zodb>
+    ... """)
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
+
+
+Next, we add a persistent object to the first database:
+
+    >>> conn1 = db.open()
+    >>> conn2 = conn1.get_connection('db2')
+    >>> pers = conn1.root.x = C()
+    >>> conn1.root.x_alias = pers
+    >>> conn1.add(pers)
+
+We can make a weak reference to this object in both databases
+as well as a strong cross-DB reference:
+
+    >>> from persistent.wref import WeakRef
+    >>> conn1.root.wx = WeakRef(pers)
+    >>> conn2.root.wx = WeakRef(pers)
+    >>> transaction.commit()
+    >>> conn2.root.x = pers
+    >>> transaction.commit()
+
+Time passes. :)
+
+    >>> now += 7 * 86400        # 7 days
+
+The number of objects in the databases now:
+
+    >>> len(conn1._storage), len(conn2._storage)
+    (2, 1)
+
+Packing doesn't change it:
+
+    >>> for d in db.databases.values():
+    ...     d.pack()
+    >>> len(conn1._storage), len(conn2._storage)
+    (2, 1)
+    >>> _ = [d.close() for d in db.databases.values()]
+
+We can GC and nothing is collected:
+
+    >>> zc.zodbdgc.gc('config', days=2)
+    db1: roots
+    db1: recent
+    db2: roots
+    db2: recent
+    db1: remove garbage
+    Removed 0 objects from db1
+    db2: remove garbage
+    Removed 0 objects from db2
+
+Now we can delete the object and jump ahead:
+
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
+    >>> conn1 = db.open()
+    >>> conn2 = conn1.get_connection('db2')
+    >>> del conn1.root.x
+    >>> transaction.commit()
+    >>> now += 7 * 86400        # 7 days
+    >>> len(conn1._storage), len(conn2._storage)
+    (2, 1)
+    >>> db.pack()
+    >>> len(conn1._storage), len(conn2._storage)
+    (2, 1)
+    >>> _ = [d.close() for d in db.databases.values()]
+
+Still no garbage (the alias holds onto it) is collected:
+
+    >>> now += 7 * 86400        # 7 days
+    >>> zc.zodbdgc.gc('config', days=2)
+    db1: roots
+    db1: recent
+    db2: roots
+    db2: recent
+    db1: remove garbage
+    Removed 0 objects from db1
+    db2: remove garbage
+    Removed 0 objects from db2
+
+The weakrefs still work until we remove the alias:
+
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
+    >>> conn1 = db.open()
+    >>> conn2 = conn1.get_connection('db2')
+    >>> conn1.root.wx() is not None
+    True
+    >>> conn2.root.wx() is not None
+    True
+    >>> del conn1.root.x_alias
+    >>> transaction.commit()
+    >>> db.pack() #for d in db.databases.values(): d.pack()
+    >>> len(conn1._storage), len(conn2._storage)
+    (2, 1)
+    >>> _ = [d.close() for d in db.databases.values()]
+
+Now a GC will collect things from the database that the original
+object was in:
+
+    >>> now += 7 * 86400        # 7 days
+    >>> zc.zodbdgc.DEBUG = True
+    >>> zc.zodbdgc.gc('config', days=2, return_bad=True)
+    db1: roots
+    db1: recent
+    db2: roots
+    db2: recent
+    db1: remove garbage
+    Removed 1 objects from db1
+    db2: remove garbage
+    Removed 0 objects from db2
+    [('db1', 1)]
+
+The weakref in the main database (home of the original object) is broken:
+
+    >>> now += 7 * 86400        # 7 days
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
+    >>> db.pack()
+    >>> conn1 = db.open()
+    >>> conn2 = conn1.get_connection('db2')
+    >>> len(conn1._storage), len(conn2._storage)
+    (1, 1)
+    >>> conn1.root.wx() is None
+    True
+
+But the weakref in the secondary database isn't quite broken, though
+accessing it does raise a KeyError:
+
+    >>> conn2.root.wx() is None
+    False
+    >>> try:   #doctest: +ELLIPSIS
+    ...   conn2.root.wx()._p_activate()
+    ... except KeyError:
+    ...   pass
+    Couldn't load state for persistent.mapping.PersistentMapping 0x01
+    Traceback (most recent call last):
+    ...
+    ...POSKeyError: 0x01
+
+This is because we still have ``conn2.root.x`` around, a
+multi-database reference to the original object:
+
+    >>> try: #doctest: +ELLIPSIS
+    ...   conn2.root.x
+    ... except KeyError:
+    ...   pass
+    Couldn't load state for persistent.mapping.PersistentMapping 0x01
+    Traceback (most recent call last):
+    ...
+    ...POSKeyError: 0x01
+
+These objects are still around and semi-alive because they are placed
+into the jar cache of conn1 by the ObjectReader when the root of conn2
+is loaded. We need to clean up the broken cross-db reference by hand:
+
+    >>> del conn2.root.x
+    >>> transaction.commit()
+    >>> conn2.db().pack()
+
+Now we can do another GC, which does nothing:
+
+    >>> _ = [d.close() for d in db.databases.values()]
+    >>> now += 7 * 86400        # 7 days
+    >>> zc.zodbdgc.gc('config', days=2)
+    db1: roots
+    db1: recent
+    db2: roots
+    db2: recent
+    db1: remove garbage
+    Removed 0 objects from db1
+    db2: remove garbage
+    Removed 0 objects from db2
+
+But the reference works as expected:
+
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
+    >>> conn1 = db.open()
+    >>> conn2 = conn1.get_connection('db2')
+    >>> len(conn1._storage), len(conn2._storage)
+    (1, 1)
+    >>> conn2.root.wx() is None
+    True
+    >>> _ = [d.close() for d in db.databases.values()]
+
+
 .. cleanup
 
     >>> logging.getLogger().setLevel(old_level)
