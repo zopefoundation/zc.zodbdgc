@@ -181,6 +181,17 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
             finally:
                 zfsit.close()
 
+    def iter_storage(name, storage, start=None, stop=None):
+        fsname = name or ''
+        if fsname in fs:
+            it = FileIterator(fs[fsname], start, stop)
+        else:
+            it = storage.iterator(start, stop)
+        # We need to be sure to always close iterators
+        # in case we raise an exception
+        close.append(it)
+        return it
+
     with open(conf) as f:
         db1 = ZODB.config.databaseFromFile(f)
     close.append(db1)
@@ -222,15 +233,7 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
             # All non-deleted new records are good
             logger.info("%s: recent", name)
 
-            if fsname in fs:
-                it = FileIterator(fs[fsname], ptid)
-            else:
-                it = storage.iterator(ptid)
-            # We need to be sure to always close iterators
-            # in case we raise an exception
-            close.append(it)
-
-            for trans in it:
+            for trans in iter_storage(name, storage, start=ptid):
                 for record in trans:
                     if n and n % 10000 == 0:
                         logger.info("%s: %s recent", name, n)
@@ -245,25 +248,17 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
                         good.insert(name, oid)
 
                         # and anything they reference
-                        for ref in getrefs(data, name, ignore):
-                            if not deleted.has(*ref):
-                                good.insert(*ref)
+                        for ref_name, ref_oid in getrefs(data, name, ignore):
+                            if not deleted.has(ref_name, ref_oid):
+                                good.insert(ref_name, ref_oid)
+                                bad.remove(ref_name, ref_oid)
                     else:
                         # deleted record
                         deleted.insert(name, oid)
-                        if good.has(name, oid):
-                            good.remove(name, oid)
+                        good.remove(name, oid)
 
         # Now iterate over older records
-        if fsname in fs:
-            it = FileIterator(fs[fsname], None, ptid)
-        else:
-            it = storage.iterator(None, ptid)
-        # We need to be sure to always close iterators
-        # in case we raise an exception
-        close.append(it)
-
-        for trans in it:
+        for trans in iter_storage(name, storage, start=None, stop=ptid):
             for record in trans:
                 if n and n % 10000 == 0:
                     logger.info("%s: %s old", name, n)
@@ -311,6 +306,9 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
         storage.tpc_begin(t)
         start = time.time()
         for oid, tid in bad.iterator(name):
+            if good.has(name, oid):
+                continue
+
             try:
                 storage.deleteObject(oid, tid, t)
             except (ZODB.POSException.POSKeyError,
@@ -339,6 +337,7 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
             t.abort()
 
     return bad
+
 
 def getrefs(p, rname, ignore):
     refs = []

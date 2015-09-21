@@ -1,5 +1,6 @@
-ZODB Distributed GC
-===================
+=====================
+ ZODB Distributed GC
+=====================
 
 This package provides a script for performing distributed garbage
 collection for a collection of ZODB storages, which will typically be
@@ -483,8 +484,158 @@ Try with 0 days:
     Removed 0 objects from db3
     [('db2', 3), ('db2', 4)]
 
+
+Objects with no references in their home database
+=================================================
+
+Even if all the references to an object are from outside its
+home database, we don't consider that object to be garbage.
+
+First we setup some databases:
+
+    >>> with open('config', 'w') as f:
+    ...     _ = f.write("""
+    ... <zodb db1>
+    ...     <filestorage>
+    ...         path wone.fs
+    ...         pack-gc false
+    ...         pack-keep-old false
+    ...     </filestorage>
+    ... </zodb>
+    ... <zodb db2>
+    ...     <filestorage>
+    ...         path wtwo.fs
+    ...         pack-gc false
+    ...         pack-keep-old false
+    ...     </filestorage>
+    ... </zodb>
+    ... """)
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
+
+
+Next, we add a persistent object to the first database:
+
+    >>> conn1 = db.open()
+    >>> conn2 = conn1.get_connection('db2')
+    >>> pers = conn1.root.x = C()
+    >>> conn1.add(pers)
+
+We can make a reference to this object in the second database,
+both immediately off the root object, and nested deeper down:
+
+    >>> conn2.root.x = pers
+    >>> conn2.root.child = C()
+    >>> conn2.root.child.x = pers
+    >>> transaction.commit()
+
+Time passes. :)
+
+    >>> now += 7 * 86400        # 7 days
+
+The number of objects in the databases now:
+
+    >>> len(conn1._storage), len(conn2._storage)
+    (2, 2)
+    >>> _ = [d.close() for d in db.databases.values()]
+
+We can GC and nothing is collected:
+
+    >>> zc.zodbdgc.gc('config', days=2)
+    db1: roots
+    db1: recent
+    db2: roots
+    db2: recent
+    db1: remove garbage
+    Removed 0 objects from db1
+    db2: remove garbage
+    Removed 0 objects from db2
+
+Now we can delete the object from its home database and jump ahead:
+
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
+    >>> conn1 = db.open()
+    >>> conn2 = conn1.get_connection('db2')
+    >>> del conn1.root.x
+    >>> transaction.commit()
+    >>> now += 7 * 86400        # 7 days
+    >>> len(conn1._storage), len(conn2._storage)
+    (2, 2)
+    >>> db.pack()
+    >>> len(conn1._storage), len(conn2._storage)
+    (2, 2)
+    >>> _ = [d.close() for d in db.databases.values()]
+
+No garbage is collected because the two cross-DB references keep the
+deleted object alive:
+
+    >>> now += 7 * 86400        # 7 days
+    >>> zc.zodbdgc.gc('config', days=2)
+    db1: roots
+    db1: recent
+    db2: roots
+    db2: recent
+    db1: remove garbage
+    Removed 0 objects from db1
+    db2: remove garbage
+    Removed 0 objects from db2
+
+Removing just the root cross-DB reference still doesn't lead to collection:
+
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
+    >>> conn1 = db.open()
+    >>> conn2 = conn1.get_connection('db2')
+    >>> del conn2.root.x
+    >>> transaction.commit()
+    >>> len(conn1._storage), len(conn2._storage)
+    (2, 2)
+    >>> _ = [d.close() for d in db.databases.values()]
+    >>> now += 7 * 86400        # 7 days
+    >>> zc.zodbdgc.gc('config', days=2, return_bad=True)
+    db1: roots
+    db1: recent
+    db2: roots
+    db2: recent
+    db1: remove garbage
+    Removed 0 objects from db1
+    db2: remove garbage
+    Removed 0 objects from db2
+    []
+
+If we take out the nested reference, the last remaining reference is
+gone and the object can be collected:
+
+    >>> with open('config', 'r') as f:
+    ...     db = ZODB.config.databaseFromFile(f)
+    >>> conn1 = db.open()
+    >>> conn2 = conn1.get_connection('db2')
+    >>> del conn2.root.child.x
+    >>> transaction.commit()
+    >>> db.databases['db2'].pack()
+    >>> len(conn1._storage), len(conn2._storage)
+    (2, 2)
+    >>> _ = [d.close() for d in db.databases.values()]
+    >>> now += 7 * 86400        # 7 days
+    >>> zc.zodbdgc.gc('config', days=2, return_bad=True)
+    db1: roots
+    db1: recent
+    db2: roots
+    db2: recent
+    db1: remove garbage
+    Removed 1 objects from db1
+    db2: remove garbage
+    Removed 0 objects from db2
+    [('db1', 1)]
+
+    >>> os.remove('wone.fs')
+    >>> os.remove('wtwo.fs')
+    >>> os.remove('wone.fs.index')
+    >>> os.remove('wtwo.fs.index')
+
 Test the check command
-----------------------
+======================
 
     If we pack the original files with gc enabled, we'll create
     a missing link.  We'll also remove the blob file, to make sure we
@@ -597,7 +748,7 @@ about cross references that we see:
 
 
 Ignoring databases
-------------------
+==================
 
 Sometimes, when doing garbage collection, you want to ignore some
 databases.
@@ -666,7 +817,7 @@ databases.
     >>> os.remove('two.fs.index')
 
 Using file-storage iterators directly
--------------------------------------
+=====================================
 
 If the database under analysis is a file-storage, we can access the
 files directly:
@@ -727,7 +878,7 @@ files directly:
     >>> os.remove('two.fs')
 
 Weak References
----------------
+===============
 
 The code properly handles all sorts of weak references: persistent
 refs within the same database and multi-database weak refs to
@@ -832,7 +983,8 @@ Still no garbage (the alias holds onto it) is collected:
     db2: remove garbage
     Removed 0 objects from db2
 
-The weakrefs still work until we remove the alias:
+The weakrefs still work until we remove all outstanding references,
+including the alias in the home database and the alias in the second database:
 
     >>> with open('config', 'r') as f:
     ...     db = ZODB.config.databaseFromFile(f)
@@ -843,8 +995,9 @@ The weakrefs still work until we remove the alias:
     >>> conn2.root.wx() is not None
     True
     >>> del conn1.root.x_alias
+    >>> del conn2.root.x
     >>> transaction.commit()
-    >>> db.pack() #for d in db.databases.values(): d.pack()
+    >>> for d in db.databases.values(): d.pack()
     >>> len(conn1._storage), len(conn2._storage)
     (2, 1)
     >>> _ = [d.close() for d in db.databases.values()]
@@ -853,7 +1006,6 @@ Now a GC will collect things from the database that the original
 object was in:
 
     >>> now += 7 * 86400        # 7 days
-    >>> zc.zodbdgc.DEBUG = True
     >>> zc.zodbdgc.gc('config', days=2, return_bad=True)
     db1: roots
     db1: recent
@@ -878,39 +1030,10 @@ The weakref in the main database (home of the original object) is broken:
     >>> conn1.root.wx() is None
     True
 
-But the weakref in the secondary database isn't quite broken, though
-accessing it does raise a KeyError:
+Also, the weakref in the secondary database is broken:
 
     >>> conn2.root.wx() is None
-    False
-    >>> try:   #doctest: +ELLIPSIS
-    ...   conn2.root.wx()._p_activate()
-    ... except KeyError:
-    ...   pass
-    Couldn't load state for persistent.mapping.PersistentMapping 0x01
-    Traceback (most recent call last):
-    ...
-    ...POSKeyError: 0x01
-
-This is because we still have ``conn2.root.x`` around, a
-multi-database reference to the original object:
-
-    >>> try: #doctest: +ELLIPSIS
-    ...   conn2.root.x
-    ... except KeyError:
-    ...   pass
-    Couldn't load state for persistent.mapping.PersistentMapping 0x01
-    Traceback (most recent call last):
-    ...
-    ...POSKeyError: 0x01
-
-These objects are still around and semi-alive because they are placed
-into the jar cache of conn1 by the ObjectReader when the root of conn2
-is loaded. We need to clean up the broken cross-db reference by hand:
-
-    >>> del conn2.root.x
-    >>> transaction.commit()
-    >>> conn2.db().pack()
+    True
 
 Now we can do another GC, which does nothing:
 
@@ -926,7 +1049,7 @@ Now we can do another GC, which does nothing:
     db2: remove garbage
     Removed 0 objects from db2
 
-But the reference works as expected:
+And the reference continues to work as expected:
 
     >>> with open('config', 'r') as f:
     ...     db = ZODB.config.databaseFromFile(f)
@@ -937,6 +1060,11 @@ But the reference works as expected:
     >>> conn2.root.wx() is None
     True
     >>> _ = [d.close() for d in db.databases.values()]
+
+    >>> os.remove('wone.fs')
+    >>> os.remove('wtwo.fs')
+    >>> os.remove('wone.fs.index')
+    >>> os.remove('wtwo.fs.index')
 
 
 .. cleanup
