@@ -257,6 +257,7 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
                         deleted.insert(name, oid)
                         good.remove(name, oid)
 
+    for name, storage in storages:
         # Now iterate over older records
         for trans in iter_storage(name, storage, start=None, stop=ptid):
             for record in trans:
@@ -306,9 +307,6 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
         storage.tpc_begin(t)
         start = time.time()
         for oid, tid in bad.iterator(name):
-            if good.has(name, oid):
-                continue
-
             try:
                 storage.deleteObject(oid, tid, t)
             except (ZODB.POSException.POSKeyError,
