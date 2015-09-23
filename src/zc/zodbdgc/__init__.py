@@ -70,7 +70,6 @@ else:
     def _itervalues(d):
         return d.values()
 
-
 def p64(v):
     """Pack an integer or long into a 8-byte string"""
     return struct.pack(b">q", v)
@@ -182,6 +181,17 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
             finally:
                 zfsit.close()
 
+    def iter_storage(name, storage, start=None, stop=None):
+        fsname = name or ''
+        if fsname in fs:
+            it = FileIterator(fs[fsname], start, stop)
+        else:
+            it = storage.iterator(start, stop)
+        # We need to be sure to always close iterators
+        # in case we raise an exception
+        close.append(it)
+        return it
+
     with open(conf) as f:
         db1 = ZODB.config.databaseFromFile(f)
     close.append(db1)
@@ -223,15 +233,7 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
             # All non-deleted new records are good
             logger.info("%s: recent", name)
 
-            if fsname in fs:
-                it = FileIterator(fs[fsname], ptid)
-            else:
-                it = storage.iterator(ptid)
-            # We need to be sure to always close iterators
-            # in case we raise an exception
-            close.append(it)
-
-            for trans in it:
+            for trans in iter_storage(name, storage, start=ptid):
                 for record in trans:
                     if n and n % 10000 == 0:
                         logger.info("%s: %s recent", name, n)
@@ -246,25 +248,18 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
                         good.insert(name, oid)
 
                         # and anything they reference
-                        for ref in getrefs(data, name, ignore):
-                            if not deleted.has(*ref):
-                                good.insert(*ref)
+                        for ref_name, ref_oid in getrefs(data, name, ignore):
+                            if not deleted.has(ref_name, ref_oid):
+                                good.insert(ref_name, ref_oid)
+                                bad.remove(ref_name, ref_oid)
                     else:
                         # deleted record
                         deleted.insert(name, oid)
-                        if good.has(name, oid):
-                            good.remove(name, oid)
+                        good.remove(name, oid)
 
+    for name, storage in storages:
         # Now iterate over older records
-        if fsname in fs:
-            it = FileIterator(fs[fsname], None, ptid)
-        else:
-            it = storage.iterator(None, ptid)
-        # We need to be sure to always close iterators
-        # in case we raise an exception
-        close.append(it)
-
-        for trans in it:
+        for trans in iter_storage(name, storage, start=None, stop=ptid):
             for record in trans:
                 if n and n % 10000 == 0:
                     logger.info("%s: %s old", name, n)
@@ -341,6 +336,7 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
 
     return bad
 
+
 def getrefs(p, rname, ignore):
     refs = []
     u = Unpickler(BytesIO(p))
@@ -348,15 +344,45 @@ def getrefs(p, rname, ignore):
     u.noload()
     u.noload()
     for ref in refs:
+        # ref types are documented in ZODB.serialize
         if isinstance(ref, tuple):
+            # (oid, class meta data)
             yield rname, ref[0]
         elif isinstance(ref, str):
+            # oid
             yield rname, ref
-        else:
+        elif not ref:
+            # Seen in corrupted databases
+            raise ValueError("Unexpected empty reference")
+        elif ref:
             assert isinstance(ref, list)
-            ref = ref[1]
-            if ref[0] not in ignore:
-                yield ref[:2]
+            # [reference type, args] or [oid]
+            if len(ref) == 1:
+                # Legacy persistent weak ref. Ignored, not a
+                # strong ref.
+                # To treat as strong: yield rname, ref
+                continue
+
+            # Args is always a tuple, but depending on
+            # the value of the reference type, the order
+            # may be different. Types n and m are in the same
+            # order, type w is different
+            kind, ref = ref
+
+            if kind in ('n', 'm'):
+                # (dbname, oid, [class meta])
+                if ref[0] not in ignore:
+                    yield ref[:2]
+            elif kind == 'w':
+                # Weak ref, either (oid) for this DB
+                # or (oid, dbname) for other db. Both ignored.
+                # To treat the first as strong:
+                #   yield rname, ref[0]
+                # To treat the second as strong:
+                #   yield ref[1], ref[0]
+                continue
+            else:
+                raise ValueError('Unknown persistent ref', kind, ref)
 
 class oidset(dict):
     """

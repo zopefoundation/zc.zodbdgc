@@ -5,8 +5,10 @@
 1.0.1 (unreleased)
 ==================
 
-- Nothing changed yet.
-
+- Fix #6: Add support for weak references.
+- Fixed: If the only references to an object were outside its home
+  database, it would be incorrectly collected, breaking the
+  cross-database references.
 
 1.0.0 (2015-08-28)
 ==================
@@ -24,7 +26,7 @@
 0.6.1 (2012-10-08)
 ==================
 
-- Fixed: GC could fail it special cases with a NameError.
+- Fixed: GC could fail in special cases with a NameError.
 
 0.6.0 (2010-05-27)
 ==================
