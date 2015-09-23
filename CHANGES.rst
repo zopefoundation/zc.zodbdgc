@@ -2,7 +2,7 @@
  Change History
 ================
 
-1.0.1 (unreleased)
+1.0.1 (2015-09-23)
 ==================
 
 - Fix #6: Add support for weak references.
