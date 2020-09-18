@@ -16,3 +16,4 @@ eggs
 develop-eggs
 .dir-locals.el
 .tox
+.coverage.*
