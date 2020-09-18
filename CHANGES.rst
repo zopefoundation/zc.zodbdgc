@@ -2,13 +2,14 @@
  Change History
 ================
 
-1.0.2 (unreleased)
+1.1.0 (unreleased)
 ==================
 
-- Add support for Python 3.5, 3.6, 3.7 and 3.8.
+- Add support for Python 3.5, 3.6, 3.7, 3.8 and 3.9.
 
 - Drop support for Python for Python 2.6, 3.2, 3.3 and 3.4.
 
+- Require ZODB 5.1 or later.
 
 1.0.1 (2015-09-23)
 ==================

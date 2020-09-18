@@ -6,18 +6,25 @@ python:
     - 3.6
     - 3.7
     - 3.8
+    - 3.9-dev
     - pypy3
-install:
-    # First install a newer pip so that it can use the wheel cache
-    # (only needed until travis upgrades pip to 7.x)
-    - travis_retry pip install -U pip
-    - pip install -U ".[test]"
+env:
+  global:
+    - PYTHONHASHSEED=1042466059
+    - ZOPE_INTERFACE_STRICT_IRO=1
+
 script:
-    - python setup.py test -q
-notifications:
-    email: false
-cache:
-  directories:
-    - $HOME/.cache/pip
+  - coverage run -m zope.testrunner --test-path=src  --auto-color --auto-progress
+
+after_success:
+  - coveralls
+
+install:
+  - pip install -U pip setuptools
+  - pip install -U coveralls coverage
+  - pip install -U -e ".[test]"
+
+cache: pip
+
 before_cache:
     - rm -f $HOME/.cache/pip/log/debug.log
