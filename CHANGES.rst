@@ -9,7 +9,7 @@
 
 - Drop support for Python for Python 2.6, 3.2, 3.3 and 3.4.
 
-- Require ZODB 5.1 or later.
+- Require ZODB 5.1 or later. See `issue 14 <https://github.com/zopefoundation/zc.zodbdgc/issues/14>`_.
 
 1.0.1 (2015-09-23)
 ==================

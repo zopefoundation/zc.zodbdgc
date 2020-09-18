@@ -14,10 +14,29 @@
 
 from __future__ import print_function
 
+from io import BytesIO
+import logging
+import marshal
+import optparse
+import struct
+import sys
+import tempfile
+import time
+
 from ZODB.utils import z64
 import BTrees.fsBTree
 import BTrees.OOBTree
 import BTrees.LLBTree
+from persistent import TimeStamp
+import transaction
+import ZODB.blob
+import ZODB.config
+import ZODB.FileStorage
+import ZODB.fsIndex
+import ZODB.POSException
+import ZODB.serialize
+from ZODB.Connection import TransactionMetaData
+
 # For consistency and easy of distribution, always use zodbpickle. On
 # most platforms, including PyPy, and all CPython >= 2.7 or 3, we need
 # it because of missing or broken `noload` support. We could get away
@@ -32,26 +51,11 @@ except ImportError:
 # Older versions of ZODB aren't aware of needing to use zodbpickle
 # under PyPy, etc, and hence have broken functions at `ZODB.serialize.referencesf`
 # and `ZODB.serialize.get_refs`. Check for that and patch it.
-import ZODB.serialize
+
 if (hasattr(ZODB.serialize, 'Unpickler')
     and not hasattr(ZODB.serialize.Unpickler, 'noload')):
     ZODB.serialize.Unpickler = Unpickler
 
-from io import BytesIO
-import logging
-import marshal
-import optparse
-from persistent import TimeStamp
-import struct
-import sys
-import tempfile
-import time
-import transaction
-import ZODB.blob
-import ZODB.config
-import ZODB.FileStorage
-import ZODB.fsIndex
-import ZODB.POSException
 
 # In cases where we might iterate multiple times
 # over large-ish dictionaries, avoid excessive copies
@@ -304,34 +308,36 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
         storage = db.storage
         nd = 0
         t = transaction.begin()
-        storage.tpc_begin(t)
+        txn_meta = TransactionMetaData()
+        storage.tpc_begin(txn_meta)
         start = time.time()
         for oid, tid in bad.iterator(name):
             try:
-                storage.deleteObject(oid, tid, t)
+                storage.deleteObject(oid, tid, txn_meta)
             except (ZODB.POSException.POSKeyError,
                     ZODB.POSException.ConflictError):
                 continue
             nd += 1
             if (nd % batch_size) == 0:
-                storage.tpc_vote(t)
-                storage.tpc_finish(t)
+                storage.tpc_vote(txn_meta)
+                storage.tpc_finish(txn_meta)
                 t.commit()
                 logger.info("%s: deleted %s", name, nd)
                 duration = time.time() - start
                 time.sleep(duration * 2)
                 batch_size = max(10, int(batch_size * .5 / duration))
                 t = transaction.begin()
-                storage.tpc_begin(t)
+                txn_meta = TransactionMetaData()
+                storage.tpc_begin(txn_meta)
                 start = time.time()
 
         logger.info("Removed %s objects from %s", nd, name)
         if nd:
-            storage.tpc_vote(t)
-            storage.tpc_finish(t)
+            storage.tpc_vote(txn_meta)
+            storage.tpc_finish(txn_meta)
             t.commit()
         else:
-            storage.tpc_abort(t)
+            storage.tpc_abort(txn_meta)
             t.abort()
 
     return bad
