@@ -48,15 +48,6 @@ try:
 except ImportError:
     from zodbpickle.pickle import Unpickler
 
-# Older versions of ZODB aren't aware of needing to use zodbpickle
-# under PyPy, etc, and hence have broken functions at `ZODB.serialize.referencesf`
-# and `ZODB.serialize.get_refs`. Check for that and patch it.
-
-if (hasattr(ZODB.serialize, 'Unpickler')
-    and not hasattr(ZODB.serialize.Unpickler, 'noload')):
-    ZODB.serialize.Unpickler = Unpickler
-
-
 # In cases where we might iterate multiple times
 # over large-ish dictionaries, avoid excessive copies
 # that tend toward O(n^2) complexity by using the explicit
