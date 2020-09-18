@@ -16,4 +16,7 @@ eggs
 develop-eggs
 .dir-locals.el
 .tox
+coverage.xml
+htmlcov/
+.coverage
 .coverage.*
