@@ -12,12 +12,12 @@
 #
 ##############################################################################
 
-name = 'zc.zodbdgc'
-version = '1.0.2.dev0'
-
 import os
-import sys
-from setuptools import setup, find_packages
+from setuptools import setup
+
+name = 'zc.zodbdgc'
+version = '1.1.0.dev0'
+
 
 entry_points = """
 [console_scripts]
@@ -38,10 +38,14 @@ long_description = (
     '========\n'
 )
 
-tests_require = ['zope.testing', 'mock >= 1.3.0']
+tests_require = [
+    'zope.testing',
+    'mock >= 1.3.0',
+    'zope.testrunner',
+]
 install_requires = [
     "BTrees >= 4.0.0",
-    "ZODB >= 4.0.0",
+    "ZODB >= 5.1.0", # TransactionMetaData added in 5.1
     "persistent >= 4.0.0",
     "setuptools >= 17.1",
     "transaction",
@@ -88,6 +92,7 @@ setup(
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: Implementation :: CPython",
         "Programming Language :: Python :: Implementation :: PyPy",
     ],

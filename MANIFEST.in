@@ -3,6 +3,7 @@ include *.rst
 include buildout.cfg
 include tox.ini
 include .pep8
+include .coveragerc
 
 recursive-include src *
 
