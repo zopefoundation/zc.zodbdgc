@@ -2,7 +2,7 @@
  Change History
 ================
 
-1.1.0 (unreleased)
+1.1.0 (2020-09-21)
 ==================
 
 - Add support for Python 3.5, 3.6, 3.7, 3.8 and 3.9.

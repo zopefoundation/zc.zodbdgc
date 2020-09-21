@@ -16,7 +16,7 @@ import os
 from setuptools import setup
 
 name = 'zc.zodbdgc'
-version = '1.1.0.dev0'
+version = '1.1.0'
 
 
 entry_points = """
