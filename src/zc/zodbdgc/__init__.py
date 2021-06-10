@@ -52,29 +52,33 @@ except ImportError:
 # over large-ish dictionaries, avoid excessive copies
 # that tend toward O(n^2) complexity by using the explicit
 # iteration functions on Python 2
-if hasattr(dict(), 'iteritems'):
+if hasattr(dict(), 'iteritems'):  # pragma: PY2
     def _iteritems(d):
         return d.iteritems()
 
     def _itervalues(d):
         return d.itervalues()
-else:
+else:  # pragma: PY3
     def _iteritems(d):
         return d.items()
 
     def _itervalues(d):
         return d.values()
 
+
 def p64(v):
     """Pack an integer or long into a 8-byte string"""
     return struct.pack(b">q", v)
+
 
 def u64(v):
     """Unpack an 8-byte string into a 64-bit signed long integer."""
     return struct.unpack(b">q", v)[0]
 
+
 logger = logging.getLogger(__name__)
 log_format = "%(asctime)s %(name)s %(levelname)s: %(message)s"
+
 
 def gc_command(args=None, ptid=None, return_bad=False):
     # The setuptools entry point for running a garbage collection.
@@ -381,12 +385,14 @@ def getrefs(p, rname, ignore):
             else:
                 raise ValueError('Unknown persistent ref', kind, ref)
 
+
 class oidset(dict):
     """
     {(name, oid)} implemented as:
 
        {name-> {oid[:6] -> {oid[-2:]}}}
     """
+
     def __init__(self, names):
         for name in names:
             self[name] = {}
@@ -445,6 +451,7 @@ class oidset(dict):
             for prefix, data in _iteritems(self[name]):
                 for suffix in data:
                     yield prefix + suffix
+
 
 class Bad(object):
 
@@ -529,6 +536,7 @@ def check(config, refdb=None):
         conn.close()
         fs.close()
 
+
 def _insert_ref(references, rname, roid, name, oid):
     if references is None:
         return False
@@ -569,6 +577,7 @@ def _insert_ref(references, rname, roid, name, oid):
         return True
     return False
 
+
 def _get_referer(references, name, oid):
     if references is None:
         return
@@ -582,6 +591,7 @@ def _get_referer(references, name, oid):
                 return rname, p64(next(iter(by_rname[rname])))
             else:
                 return name, p64(next(iter(by_rname)))
+
 
 def check_(config, references=None):
     with open(config) as f:
@@ -603,12 +613,12 @@ def check_(config, references=None):
                 if not seen.insert(name, oid):
                     continue
                 p, tid = storages[name].load(oid, b'')
-                if (# XXX should be in is_blob_record
+                if (  # XXX should be in is_blob_record
                     len(p) < 100 and (b'ZODB.blob' in p)
                         and ZODB.blob.is_blob_record(p)
                 ):
                     storages[name].loadBlob(oid, tid)
-            except:
+            except BaseException:
                 print('!!!', name, u64(oid), end=' ')
 
                 referer = _get_referer(references, name, oid)
@@ -642,6 +652,7 @@ def check_(config, references=None):
         for d in db.databases.values():
             d.close()
 
+
 def check_command(args=None):
     if args is None:
         args = sys.argv[1:]
@@ -658,6 +669,7 @@ def check_command(args=None):
         parser.parse_args(['-h'])
 
     check(args[0], options.refdb)
+
 
 class References(object):
 

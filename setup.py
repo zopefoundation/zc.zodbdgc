@@ -25,9 +25,11 @@ multi-zodb-gc = zc.zodbdgc:gc_command
 multi-zodb-check-refs = zc.zodbdgc:check_command
 """
 
+
 def read(rname):
     with open(os.path.join(os.path.dirname(__file__), *rname.split('/'))) as f:
         return f.read()
+
 
 long_description = (
     read('src/%s/README.txt' % '/'.join(name.split('.')))
@@ -45,7 +47,7 @@ tests_require = [
 ]
 install_requires = [
     "BTrees >= 4.0.0",
-    "ZODB >= 5.1.0", # TransactionMetaData added in 5.1
+    "ZODB >= 5.1.0",  # TransactionMetaData added in 5.1
     "persistent >= 4.0.0",
     "setuptools >= 17.1",
     "transaction",
