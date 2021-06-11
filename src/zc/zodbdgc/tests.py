@@ -16,15 +16,16 @@ import binascii
 import doctest
 import mock
 import re
-import time
 import unittest
 import zc.zodbdgc
 import ZODB.config
+
 
 def untransform(data):
     if data[:2] == b'.h':
         data = binascii.a2b_hex(data[2:])
     return data
+
 
 def hex_pack(self, pack_time, referencesf, *args):
     def refs(p, oids=None):
@@ -32,6 +33,7 @@ def hex_pack(self, pack_time, referencesf, *args):
             p = binascii.a2b_hex(p[2:])
         return referencesf(p, oids)
     return self.base.pack(pack_time, refs, *args)
+
 
 def test_untransform():
     r"""
@@ -113,6 +115,7 @@ Now GC. We should lose 3 objects:
     >>> db.close()
     """
 
+
 def stupid_typo_nameerror_not():
     """
 
@@ -146,7 +149,6 @@ def stupid_typo_nameerror_not():
     ...     conn.transaction_manager.commit()
     ...     db.close()
     ...     import zc.zodbdgc, time
-    ...     from ZODB.utils import u64
     ...     bad = zc.zodbdgc.gc('config', days=1, return_bad=True)
     ...     for name, oid in bad:
     ...         print( "{0} {1}".format(name, oid) )
@@ -161,6 +163,7 @@ def stupid_typo_nameerror_not():
     1
     >>> db.close()
     """
+
 
 def test_missmatched_configs():
     """
@@ -193,6 +196,7 @@ def test_missmatched_configs():
 
     """
 
+
 def test_suite():
     suite = unittest.TestSuite((
         doctest.DocFileSuite(
@@ -205,7 +209,7 @@ def test_suite():
         ),
     ))
     try:
-        import ZODB.tests.hexstorage
+        import ZODB.tests.hexstorage  # noqa: F401 import unused
     except ImportError:
         pass
     else:
