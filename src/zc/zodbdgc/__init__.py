@@ -618,7 +618,7 @@ def check_(config, references=None):
                         and ZODB.blob.is_blob_record(p)
                 ):
                     storages[name].loadBlob(oid, tid)
-            except BaseException:
+            except:  # noqa: E722 do not use bare 'except'
                 print('!!!', name, u64(oid), end=' ')
 
                 referer = _get_referer(references, name, oid)
