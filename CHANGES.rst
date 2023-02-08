@@ -5,7 +5,7 @@
 2.0 (unreleased)
 ================
 
-- Nothing changed yet.
+- Drop support for Python 2.7, 3.5, 3.6.
 
 
 1.1.0 (2020-09-21)
