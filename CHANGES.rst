@@ -5,6 +5,8 @@
 2.0 (unreleased)
 ================
 
+- Add support for Python 3.10, 3.11.
+
 - Drop support for Python 2.7, 3.5, 3.6.
 
 

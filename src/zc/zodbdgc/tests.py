@@ -11,14 +11,17 @@
 # FOR A PARTICULAR PURPOSE.
 #
 ##############################################################################
-from zope.testing import setupstack, renormalizing
 import binascii
 import doctest
-import mock
 import re
 import unittest
-import zc.zodbdgc
+
+import mock
 import ZODB.config
+from zope.testing import renormalizing
+from zope.testing import setupstack
+
+import zc.zodbdgc
 
 
 def untransform(data):

@@ -14,7 +14,6 @@
 
 from __future__ import print_function
 
-from io import BytesIO
 import logging
 import marshal
 import optparse
@@ -22,12 +21,11 @@ import struct
 import sys
 import tempfile
 import time
+from io import BytesIO
 
-from ZODB.utils import z64
 import BTrees.fsBTree
-import BTrees.OOBTree
 import BTrees.LLBTree
-from persistent import TimeStamp
+import BTrees.OOBTree
 import transaction
 import ZODB.blob
 import ZODB.config
@@ -35,7 +33,10 @@ import ZODB.FileStorage
 import ZODB.fsIndex
 import ZODB.POSException
 import ZODB.serialize
+from persistent import TimeStamp
 from ZODB.Connection import TransactionMetaData
+from ZODB.utils import z64
+
 
 # For consistency and easy of distribution, always use zodbpickle. On
 # most platforms, including PyPy, and all CPython >= 2.7 or 3, we need
