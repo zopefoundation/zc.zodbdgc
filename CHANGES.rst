@@ -2,8 +2,8 @@
  Change History
 ================
 
-1.1.1 (unreleased)
-==================
+2.0 (unreleased)
+================
 
 - Nothing changed yet.
 
