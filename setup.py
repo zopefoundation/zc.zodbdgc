@@ -53,10 +53,6 @@ install_requires = [
     "persistent >= 4.0.0",
     "setuptools >= 17.1",
     "transaction",
-    # PyPy, Jython, and Py3K don't have cPickle's `noload`, and `noload`
-    # is broken in CPython >= 2.7. Use zodbpickle everywhere, even on
-    # cPython 2.6, for consistency and to avoid issues with wheels and
-    # dynamic install_requires.
     "zodbpickle",
 ]
 
@@ -65,7 +61,7 @@ setup(
     name=name,
     version=version,
     author='Jim Fulton',
-    author_email='jim@zope.com',
+    author_email='zope-dev@zope.dev',
     description='ZODB Distributed Garbage Collection',
     long_description=long_description,
     license='ZPL 2.1',
@@ -75,15 +71,14 @@ setup(
     packages=['zc', 'zc.zodbdgc'],
     namespace_packages=['zc'],
     package_dir={'': 'src'},
+    python_requires='>=3.7',
     install_requires=install_requires,
     zip_safe=False,
     entry_points=entry_points,
     include_package_data=True,
-    tests_require=tests_require,
     extras_require=dict(
         test=tests_require,
     ),
-    test_suite='zc.zodbdgc.tests.test_suite',
     classifiers=[
         "Framework :: ZODB",
         "License :: OSI Approved :: Zope Public License",

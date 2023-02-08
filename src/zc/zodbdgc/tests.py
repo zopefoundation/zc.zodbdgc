@@ -15,8 +15,8 @@ import binascii
 import doctest
 import re
 import unittest
+from unittest import mock
 
-import mock
 import ZODB.config
 from zope.testing import renormalizing
 from zope.testing import setupstack
@@ -211,12 +211,7 @@ def test_suite():
             ]),
         ),
     ))
-    try:
-        import ZODB.tests.hexstorage  # noqa: F401 import unused
-    except ImportError:
-        pass
-    else:
-        suite.addTest(doctest.DocTestSuite(
-            setUp=setupstack.setUpDirectory, tearDown=setupstack.tearDown,
-        ))
+    suite.addTest(doctest.DocTestSuite(
+        setUp=setupstack.setUpDirectory, tearDown=setupstack.tearDown,
+    ))
     return suite

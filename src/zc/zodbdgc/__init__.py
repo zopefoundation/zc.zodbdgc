@@ -12,7 +12,6 @@
 #
 ##############################################################################
 
-from __future__ import print_function
 
 import logging
 import marshal
@@ -38,33 +37,12 @@ from ZODB.Connection import TransactionMetaData
 from ZODB.utils import z64
 
 
-# For consistency and easy of distribution, always use zodbpickle. On
-# most platforms, including PyPy, and all CPython >= 2.7 or 3, we need
-# it because of missing or broken `noload` support. We could get away
-# without it under CPython 2.6, but there's not really any point. Use
-# the fastest version we can have access to (PyPy doesn't have
+# Use the fastest version we can have access to (PyPy doesn't have
 # fastpickle)
 try:
     from zodbpickle.fastpickle import Unpickler
 except ImportError:
     from zodbpickle.pickle import Unpickler
-
-# In cases where we might iterate multiple times
-# over large-ish dictionaries, avoid excessive copies
-# that tend toward O(n^2) complexity by using the explicit
-# iteration functions on Python 2
-if hasattr(dict(), 'iteritems'):  # pragma: PY2
-    def _iteritems(d):
-        return d.iteritems()
-
-    def _itervalues(d):
-        return d.itervalues()
-else:  # pragma: PY3
-    def _iteritems(d):
-        return d.items()
-
-    def _itervalues(d):
-        return d.values()
 
 
 def p64(v):
@@ -419,17 +397,17 @@ class oidset(dict):
                 del self[name][prefix]
 
     def __nonzero__(self):
-        for v in _itervalues(self):
+        for v in self.values():
             if v:
                 return True
         return False
     __bool__ = __nonzero__
 
     def pop(self):
-        for name, data in _iteritems(self):
+        for name, data in self.items():
             if data:
                 break
-        prefix, s = next(iter(_iteritems(data)))
+        prefix, s = next(iter(data.items()))
         suffix = s.maxKey()
         s.remove(suffix)
         if not s:
@@ -449,12 +427,12 @@ class oidset(dict):
                 for oid in self.iterator(name):
                     yield name, oid
         else:
-            for prefix, data in _iteritems(self[name]):
+            for prefix, data in self[name].items():
                 for suffix in data:
                     yield prefix + suffix
 
 
-class Bad(object):
+class Bad:
 
     def __init__(self, names):
         self._file = tempfile.TemporaryFile(dir='.', prefix='gcbad')
@@ -471,7 +449,7 @@ class Bad(object):
 
     def __nonzero__(self):
         raise SystemError('wtf')
-        return sum(map(bool, _itervalues(self._dbs)))
+        return sum(map(bool, self._dbs.values()))
     __bool__ = __nonzero__
 
     def has(self, name, oid):
@@ -485,7 +463,7 @@ class Bad(object):
                     yield name, oid
         else:
             f = self._file
-            for oid, pos in _iteritems(self._dbs[name]):
+            for oid, pos in self._dbs[name].items():
                 f.seek(pos)
                 yield oid, f.read(8)
 
@@ -599,7 +577,7 @@ def check_(config, references=None):
         db = ZODB.config.databaseFromFile(f)
     try:
         databases = db.databases
-        storages = dict((name, db.storage) for (name, db) in databases.items())
+        storages = {name: db.storage for (name, db) in databases.items()}
 
         roots = oidset(databases)
         for name in databases:
@@ -629,7 +607,7 @@ def check_(config, references=None):
                 else:
                     print('?')
                 t, v = sys.exc_info()[:2]
-                print("%s: %s" % (t.__name__, v))
+                print("{}: {}".format(t.__name__, v))
                 continue
 
             for ref in getrefs(p, name, ()):
@@ -672,7 +650,7 @@ def check_command(args=None):
     check(args[0], options.refdb)
 
 
-class References(object):
+class References:
 
     def __init__(self, db):
         self._conn = ZODB.connection(db)
@@ -687,7 +665,7 @@ class References(object):
             oid = u64(oid)
         by_rname = self._refs[name][oid]
         if isinstance(by_rname, dict):
-            for rname, roids in _iteritems(by_rname):
+            for rname, roids in by_rname.items():
                 for roid in roids:
                     yield rname, roid
         else:
