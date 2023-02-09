@@ -11,14 +11,17 @@
 # FOR A PARTICULAR PURPOSE.
 #
 ##############################################################################
-from zope.testing import setupstack, renormalizing
 import binascii
 import doctest
-import mock
 import re
 import unittest
-import zc.zodbdgc
+from unittest import mock
+
 import ZODB.config
+from zope.testing import renormalizing
+from zope.testing import setupstack
+
+import zc.zodbdgc
 
 
 def untransform(data):
@@ -208,12 +211,7 @@ def test_suite():
             ]),
         ),
     ))
-    try:
-        import ZODB.tests.hexstorage  # noqa: F401 import unused
-    except ImportError:
-        pass
-    else:
-        suite.addTest(doctest.DocTestSuite(
-            setUp=setupstack.setUpDirectory, tearDown=setupstack.tearDown,
-        ))
+    suite.addTest(doctest.DocTestSuite(
+        setUp=setupstack.setUpDirectory, tearDown=setupstack.tearDown,
+    ))
     return suite
