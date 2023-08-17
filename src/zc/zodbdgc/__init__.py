@@ -144,7 +144,6 @@ def gc(conf, days=1, ignore=(), conf2=None, fs=(), untransform=None,
 
 
 def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
-    FileIterator = ZODB.FileStorage.FileIterator
     if untransform is not None:
         def FileIterator(*args):
             def transit(trans):
@@ -158,6 +157,8 @@ def gc_(close, conf, days, ignore, conf2, fs, untransform, ptid):
                     yield transit(t)
             finally:
                 zfsit.close()
+    else:
+        FileIterator = ZODB.FileStorage.FileIterator
 
     def iter_storage(name, storage, start=None, stop=None):
         fsname = name or ''
